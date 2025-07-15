@@ -5,20 +5,6 @@ from django.db.models.functions import Now
 from django.contrib.postgres.fields import ArrayField
 
 
-class AttributeTextOption(models.Model):
-    plant_attribute_id = models.IntegerField(blank=True, null=True)
-    site_attribute_id = models.IntegerField(blank=True, null=True)
-    option_text = models.ForeignKey('Text', models.DO_NOTHING)
-    created_at = models.DateTimeField(db_default=Now())
-    updated_at = models.DateTimeField(db_default=Now())
-    deleted_at = models.DateTimeField(blank=True, null=True)
-
-    class Meta:
-        managed = False
-        db_table = '"core"."attribute_text_options"'
-        unique_together = (('plant_attribute_id', 'site_attribute_id', 'option_text'),)
-
-
 class ContentEndorsement(models.Model):
     plant_data_id = models.IntegerField(blank=True, null=True)
     plant_popular_name_id = models.IntegerField(blank=True, null=True)

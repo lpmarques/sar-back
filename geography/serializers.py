@@ -1,4 +1,4 @@
-from rest_framework.serializers import ModelSerializer, Serializer, CharField, SlugRelatedField
+from rest_framework.serializers import ModelSerializer, CharField, SlugRelatedField
 from geography.models import Country, Municipality, State
 
 class CountrySerializer(ModelSerializer):

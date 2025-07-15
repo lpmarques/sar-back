@@ -43,6 +43,7 @@ INSTALLED_APPS = [
 	'authemail',
     'corsheaders',
     'debug_toolbar',
+    'catalog',
     'core',
     'geography',
 ]
