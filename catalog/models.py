@@ -1,5 +1,6 @@
 from django.db import models
 from django.db.models.functions import Now
+from catalog.managers import PlantValueManager
 from core.models import Source, User, Text
 from geography.models import Biome, Country, State, VegetationType
 
@@ -95,9 +96,9 @@ class PlantScientificName(models.Model):
 
 class PlantTrait(models.Model):
     name = models.CharField()
-    name_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='trait_name_text')
+    name_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='name_text_plant_traits')
     section = models.CharField(blank=True, null=True)
-    section_text = models.ForeignKey(Text, models.DO_NOTHING, blank=True, null=True)
+    section_text = models.ForeignKey(Text, models.DO_NOTHING, blank=True, null=True, related_name='section_text_plant_traits')
     data_type = models.CharField()
     is_nullable = models.BooleanField()
     is_site_specific = models.BooleanField()
@@ -127,7 +128,7 @@ class PlantTraitTextValueOption(models.Model):
 
 
 class PlantValue(models.Model):
-    plant = models.ForeignKey(Plant, models.DO_NOTHING)
+    plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='values')
     trait = models.ForeignKey(PlantTrait, models.DO_NOTHING)
     value = models.CharField()
     content_status = models.CharField(db_default='proposed', db_comment='[proposed, accepted, rejected]')
@@ -139,6 +140,8 @@ class PlantValue(models.Model):
     accepted_at = models.DateTimeField(blank=True, null=True)
     rejected_at = models.DateTimeField(blank=True, null=True)
 
+    objects = PlantValueManager()
+
     class Meta:
         managed = False
         db_table = '"catalog"."plant_values"'
@@ -147,9 +150,9 @@ class PlantValue(models.Model):
 
 class PlantValueText(models.Model):
     pk = models.CompositePrimaryKey('plant_value', 'text')
-    plant_value = models.ForeignKey(PlantValue, models.DO_NOTHING)
-    text = models.IntegerField()
+    plant_value = models.ForeignKey(PlantValue, models.DO_NOTHING, related_name='plant_value_texts')
+    text = models.ForeignKey(Text, models.DO_NOTHING)
 
     class Meta:
         managed = False
-        db_table = '"catalog"."plant_value_texts"'
+        db_table = '"catalog"."plant_value_texts"' # TODO: mudar nome da tabela para plant_values_texts e transformar relação em M2M
