@@ -1,46 +1,7 @@
-from rest_framework.serializers import Serializer, Field, BooleanField, CharField, DecimalField, IntegerField, ListField, ModelSerializer, SerializerMethodField, SlugRelatedField
+from rest_framework.serializers import CharField, IntegerField, ModelSerializer, SerializerMethodField, SlugRelatedField
 from catalog.models import Plant, PlantPopularName, PlantScientificName, PlantTrait, PlantValue
+from core.serializers import SourceSerializer
 import json
-
-class StringListField(Field):
-    def __init__(self, separator=",", *args, **kwargs):
-        self.separator = separator
-        super().__init__(*args, **kwargs)
-
-    def to_internal_value(self, value):
-        return self.separator.join(value) if value else None
-    
-    def to_representation(self, value):
-        return value.split(self.separator) if value else None
-
-class ScientificNameFilterParamsSerializer(Serializer):
-    content_status = CharField(required=False, allow_blank=False, source='status')
-    taxonomic_status = CharField(required=False, allow_blank=False)
-
-class PopularNameFilterParamsSerializer(Serializer):
-    content_status = CharField(required=False, allow_blank=False, source='status')
-
-class TraitFilterParamsSerializer(Serializer):
-    name__in = StringListField(required=False, allow_null=False, source='keys')
-    section__in = StringListField(required=False, allow_null=False, source='section_keys')
-
-class PlantTraitValueFilterParamsSerializer(Serializer):
-    content_status = CharField(required=False, allow_blank=False, source='status')
-    trait__name__in = StringListField(required=False, allow_null=False, source='trait_keys')
-    trait__section__in = StringListField(required=False, allow_null=False, source='section_keys')
-
-class PlantParamsSerializer(Serializer):
-    status = BooleanField(required=False, allow_null=False)
-    with_scientific_names = BooleanField(required=False, allow_null=False)
-    scientific_names_status = CharField(required=False, allow_blank=False)
-    scientific_names_taxonomic_status = CharField(required=False, allow_blank=False)
-    with_popular_names = BooleanField(required=False, allow_null=False)
-    popular_names_status = CharField(required=False, allow_blank=False)
-    with_trait_values = BooleanField(required=False, allow_null=False)
-    trait_values_status = CharField(required=False, allow_blank=False)
-    trait_values_trait_keys = StringListField(required=False, allow_null=False)
-    trait_values_section_keys = StringListField(required=False, allow_null=False)
-
 
 class TraitSerializer(ModelSerializer):
     key = CharField(read_only=True, source='name')
@@ -66,7 +27,6 @@ class TraitSerializer(ModelSerializer):
             'numeric_value_max',
             'text_value_options',
         ]
-    
 
 class PlantTraitValueSerializer(ModelSerializer):
     trait_key = SlugRelatedField(read_only=True, source='trait', slug_field='name')
@@ -144,6 +104,12 @@ class PlantPopularNameSerializer(PopularNameSerializer):
         model = PlantPopularName
         fields = [
             'name',
+            'content_status',
+            'content_author',
+            'endorsements',
+            'source_id',
+            'created_at',
+            'accepted_at',
         ]
 
 class PlantSerializer(ModelSerializer):

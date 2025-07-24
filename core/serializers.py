@@ -1,5 +1,19 @@
 from rest_framework.serializers import ModelSerializer, Serializer, EmailField, CharField, IntegerField, SlugRelatedField
-from core.models import User
+from core.models import Source, User
+
+class SourceSerializer(ModelSerializer):
+    class Meta:
+        model = Source
+        fields = (
+            'type',
+            'year',
+            'publication_title',
+            'publication_authors',
+            'publisher',
+            'url',
+            'description',
+            'content_author',
+        )
 
 class UserSerializer(ModelSerializer):
     password = CharField(write_only=True)
