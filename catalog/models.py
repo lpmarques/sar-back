@@ -1,6 +1,6 @@
 from django.db import models
 from django.db.models.functions import Now
-from catalog.managers import PlantValueManager
+from catalog.querysets import PlantQuerySet, PlantTraitQuerySet, PlantValueQuerySet
 from core.models import Source, User, Text
 from geography.models import Biome, Country, State, VegetationType
 
@@ -13,6 +13,8 @@ class Plant(models.Model):
     created_at = models.DateTimeField(db_default=Now())
     accepted_at = models.DateTimeField(db_default=Now())
     rejected_at = models.DateTimeField(blank=True, null=True)
+
+    objects = PlantQuerySet().as_manager()
 
     class Meta:
         managed = False
@@ -108,6 +110,8 @@ class PlantTrait(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
+    objects = PlantTraitQuerySet().as_manager()
+
     class Meta:
         managed = False
         db_table = '"catalog"."plant_traits"'
@@ -116,7 +120,7 @@ class PlantTrait(models.Model):
 
 class PlantTraitTextValueOption(models.Model):
     pk = models.CompositePrimaryKey('plant_trait_id', 'option_text')
-    plant_trait = models.ForeignKey(PlantTrait, models.DO_NOTHING)
+    plant_trait = models.ForeignKey(PlantTrait, models.DO_NOTHING, related_name='text_value_options')
     option_text = models.ForeignKey(Text, models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
@@ -140,7 +144,7 @@ class PlantValue(models.Model):
     accepted_at = models.DateTimeField(blank=True, null=True)
     rejected_at = models.DateTimeField(blank=True, null=True)
 
-    objects = PlantValueManager()
+    objects = PlantValueQuerySet().as_manager()
 
     class Meta:
         managed = False

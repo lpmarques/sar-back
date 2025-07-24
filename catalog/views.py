@@ -1,4 +1,3 @@
-import json
 import pandas as pd
 from django.db.models import Prefetch
 from rest_framework import status
@@ -6,99 +5,85 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from catalog.models import Plant, PlantPopularName, PlantScientificName, PlantValue
-from catalog.serializers import PlantSerializer, PlantQueryParamsSerializer, PlantTraitValueSerializer, PopularNameSerializer, ScientificNameSerializer
-
+from catalog.serializers import *
 
 class PlantView(APIView):
     permission_classes = [AllowAny]
+    
+    param_to_filter_keys = {
+        'plant_status': 'content_status',
+        'popular_names_status': 'content_status',
+        'scientific_names_status': 'content_status',
+        'scientific_names_taxonomic_status': 'taxonomic_status',
+        'trait_values_status': 'content_status',
+        'trait_values_trait_keys': 'trait__name__in',
+        'trait_values_section_keys': 'trait__section__in'
+    }
 
-    def get_prefetches(
-            self,
-            scientific_names: bool = False,
-            scientific_names_status: str = "accepted",
-            scientific_names_taxonomic_status: str = None,
-            popular_names: bool = False,
-            popular_names_status: str = "accepted",
-            trait_values: bool = False,
-            trait_values_status: str = "accepted",
-            trait_values_trait_keys: str = None,
-            trait_values_section_key: str = None,
-            *args
-        ):
-        prefetches = []
-        if scientific_names:
-            filters = {}
-            filters.update({'content_status': scientific_names_status} if scientific_names_status else {})
-            filters.update({'taxonomic_status': scientific_names_taxonomic_status} if scientific_names_taxonomic_status else {})
-            prefetches.append(
-                Prefetch(
-                    'scientific_names',
-                    queryset=PlantScientificName.objects.filter(**filters)
-                ),
-            )
-        if popular_names:
-            filters = {}
-            filters.update({'content_status': popular_names_status} if popular_names_status else {})
-            prefetches.append(
-                Prefetch(
-                    'popular_names',
-                    queryset=PlantPopularName.objects.filter(**filters)
-                )
-            )
-        if trait_values:
-            filters = {}
-            filters.update({'content_status': trait_values_status} if trait_values_status else {})
-            filters.update({'trait__name__in': trait_values_trait_keys} if trait_values_trait_keys else {})
-            filters.update({'trait__section': trait_values_section_key} if trait_values_section_key else {})
-            prefetches.append(
-                Prefetch(
-                    'values',
-                    queryset=PlantValue.objects.denormalized().filter(**filters)
-                )
-            )
+    def fetch_filters(self, params_data: dict, relation_name: str):
+        return { self.param_to_filter_keys.get(key): value for key, value in params_data.items() if key in params_data.keys() and f'{relation_name}_' in key }
 
-        return prefetches
+    def get_queryset(self):
+        params = PlantParamsSerializer(self.request.query_params)
+
+        query = Plant.objects.with_popular_names(self.fetch_filters(params.data, 'popular_names')) if params.data.get('with_popular_names') else Plant.objects
+        query = query.with_scientific_names(self.fetch_filters(params.data, 'scientific_names')) if params.data.get('with_scientific_names') else query
+        query = query.with_trait_values(self.fetch_filters(params.data, 'trait_values')) if params.data.get('with_trait_values') else query
+
+        return query
 
     def get(self, request, plant_id):
-        serializer = PlantQueryParamsSerializer(request.query_params)
-        prefetches = self.get_prefetches(**serializer.data)
+        params = PlantParamsSerializer(request.query_params)
 
         try:
-            queryset = Plant.objects
-            if prefetches:
-                queryset = queryset.prefetch_related(*prefetches)
-            plant = queryset.get(id=plant_id)
-
+            plant = self.get_queryset().get(id=plant_id)
         except Plant.DoesNotExist:
             content = {'msg': 'Planta não cadastrada'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = PlantSerializer(plant, params=request.query_params.dict())
+        serializer = PlantSerializer(plant, params=params.data)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class PlantListView(PlantView):
+    permission_classes = [AllowAny]
 
     def get(self, request):
-        serializer = PlantQueryParamsSerializer(request.query_params)
-        prefetches = self.get_prefetches(**serializer.data)
+        params = PlantParamsSerializer(request.query_params)
+        filters = {'content_status': 'accepted'}
+        filters.update(self.fetch_filters(params.data, 'plant'))
 
-        queryset = Plant.objects
-        if prefetches:
-            queryset = queryset.prefetch_related(*prefetches)
-        plants = queryset.filter(content_status="accepted")
+        plants = self.get_queryset().filter(**filters)
 
-        serializer = PlantSerializer(plants, many=True, params=request.query_params.dict())
+        serializer = PlantSerializer(plants, many=True, params=params.data)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
-  
-class PlantTraitListView(APIView):
+
+
+class TraitListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        filters = {'is_site_specific': False}
+        filters.update(TraitFilterParamsSerializer(request.query_params).data)
+
+        traits = PlantTrait.objects.denormalized().filter(**filters)
+
+        serializer = TraitSerializer(traits, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class PlantTraitValueListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, plant_id):
+        extra_filters = PlantTraitValueFilterParamsSerializer(request.query_params).data
+
         try:
             plant = Plant.objects.get(id=plant_id, content_status='accepted')
-            trait_values = PlantValue.objects.denormalized().filter(plant_id=plant.id, content_status='accepted')
+            trait_values = PlantValue.objects.denormalized().filter(plant_id=plant_id, content_status='accepted', **extra_filters)
         except Plant.DoesNotExist:
             content = {'msg': 'Planta não cadastrada'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
@@ -110,6 +95,7 @@ class PlantTraitListView(APIView):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+
 class PopularNameListView(APIView):
     permission_classes = [AllowAny]
 
@@ -117,22 +103,49 @@ class PopularNameListView(APIView):
         grouped_df = pd.DataFrame(data).groupby('name').agg(plant_ids=('plant_id', lambda x: list(x)))
         
         return grouped_df.reset_index().to_dict(orient='records')
+    
+    def get_queryset(self):
+        filters = {'content_status': 'accepted'}
+        filters.update(PopularNameFilterParamsSerializer(self.request.query_params).data)
 
-    def get(self, request, plant_id=None):
-        optional_filters = {'plant_id': plant_id} if plant_id else {}
-        popular_names = PlantPopularName.objects.filter(content_status='accepted', **optional_filters)
+        return PlantPopularName.objects.filter(**filters)
+
+    def get(self):
+        popular_names = self.get_queryset()
         serializer = PopularNameSerializer(popular_names, many=True)
-        
         data = self.group_by_popular_name(serializer.data) # TODO: consider changing relation to M2M and removing this step
+
         return Response(data, status=status.HTTP_200_OK)
+    
+
+class PlantPopularNameListView(PopularNameListView):
+    def get(self, request, plant_id):
+        popular_names = self.get_queryset().filter(plant_id=plant_id)
+        serializer = PlantPopularNameSerializer(popular_names, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class ScientificNameListView(APIView):
     permission_classes = [AllowAny]
 
-    def get(self, request, plant_id=None):
-        optional_filters = {'plant_id': plant_id} if plant_id else {}
-        scientific_names = PlantScientificName.objects.filter(content_status='accepted', **optional_filters).prefetch_related(
-            Prefetch('plant', queryset=Plant.objects.filter(content_status='accepted')))
+    def get_queryset(self):
+        filters = {'content_status': 'accepted'}
+        filters.update(ScientificNameFilterParamsSerializer(self.request.query_params).data)
+
+        return PlantScientificName.objects.filter(**filters)
+
+    def get(self):
+        scientific_names = self.get_queryset()
         serializer = ScientificNameSerializer(scientific_names, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class PlantScientificNameListView(ScientificNameListView):
+
+    def get(self, request, plant_id):
+        scientific_names = self.get_queryset().filter(plant_id=plant_id)
+        serializer = PlantScientificNameSerializer(scientific_names, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
