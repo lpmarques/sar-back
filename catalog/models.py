@@ -1,6 +1,6 @@
 from django.db import models
 from django.db.models.functions import Now
-from catalog.querysets import PlantQuerySet, PlantTraitQuerySet, PlantValueQuerySet
+from catalog.querysets import PlantQuerySet, PlantNaturalOccurrenceRegionQuerySet, PlantPopularNameQuerySet, PlantScientificNameQuerySet, PlantTraitQuerySet, PlantValueQuerySet
 from core.models import Source, User, Text
 from geography.models import Biome, Country, State, VegetationType
 
@@ -40,8 +40,8 @@ class PlantInvasionRiskRegion(models.Model):
         unique_together = (('plant_scientific_name', 'plant', 'country', 'state', 'biome'),)
 
 
-class PlantNaturalDistributionRegion(models.Model):
-    plant = models.ForeignKey(Plant, models.DO_NOTHING)
+class PlantNaturalDistributionRegion(models.Model): # rename table as plant_natural_occurrence_regions
+    plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='natural_occurrence_regions')
     country = models.ForeignKey(Country, models.DO_NOTHING)
     state = models.ForeignKey(State, models.DO_NOTHING, blank=True, null=True)
     biome = models.ForeignKey(Biome, models.DO_NOTHING, blank=True, null=True)
@@ -53,13 +53,15 @@ class PlantNaturalDistributionRegion(models.Model):
     created_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
+    objects = PlantNaturalOccurrenceRegionQuerySet.as_manager()
+
     class Meta:
         managed = False
         db_table = '"catalog"."plant_natural_distribution_regions"'
         unique_together = (('plant', 'country', 'state', 'biome', 'vegetation_type'),)
 
 
-class PlantPopularName(models.Model):
+class PlantPopularName(models.Model): # TODO: remove plant_id FK and add join table for M2M rel. with plants table
     name = models.CharField()
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='popular_names')
     content_status = models.CharField(db_default='proposed', db_comment='[proposed, accepted, rejected]')
@@ -71,13 +73,15 @@ class PlantPopularName(models.Model):
     accepted_at = models.DateTimeField(blank=True, null=True)
     rejected_at = models.DateTimeField(blank=True, null=True)
 
+    objects = PlantPopularNameQuerySet().as_manager()
+
     class Meta:
         managed = False
         db_table = '"catalog"."plant_popular_names"'
         unique_together = (('plant', 'name', 'content_status', 'rejected_at'),)
 
 
-class PlantScientificName(models.Model):
+class PlantScientificName(models.Model): # TODO: replace with "biological_taxonomy" table containing rank fields (species, genus, family, etc) + taxonomic_status
     name = models.CharField(unique=True)
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='scientific_names')
     taxonomic_status = models.CharField(db_comment='[accepted, synonym]')
@@ -89,6 +93,8 @@ class PlantScientificName(models.Model):
     created_at = models.DateTimeField(db_default=Now())
     accepted_at = models.DateTimeField(blank=True, null=True)
     rejected_at = models.DateTimeField(blank=True, null=True)
+
+    objects = PlantScientificNameQuerySet().as_manager()
 
     class Meta:
         managed = False

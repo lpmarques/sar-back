@@ -1,18 +1,30 @@
 from rest_framework.serializers import CharField, IntegerField, ModelSerializer, SerializerMethodField, SlugRelatedField
-from catalog.models import Plant, PlantPopularName, PlantScientificName, PlantTrait, PlantValue
-from core.serializers import SourceSerializer
+from catalog.models import Plant, PlantNaturalDistributionRegion, PlantPopularName, PlantScientificName, PlantTrait, PlantValue
+from core.serializers import SourceSerializer, UserPreviewSerializer
 import json
+
+pg_to_json_type = {
+    'int4range': 'range',
+    'numrange': 'range',
+    'varchar[]': 'string[]',
+    'varchar': 'string',
+    'integer': 'number',
+    'boolean': 'boolean'
+}
 
 class TraitSerializer(ModelSerializer):
     key = CharField(read_only=True, source='name')
     name = SlugRelatedField(read_only=True, source='name_text', slug_field='pt_br')
     section_key = CharField(read_only=True, source='section')
     section_name = SlugRelatedField(read_only=True, source='section_text', slug_field='pt_br')
-    data_type = CharField(read_only=True)
+    type = SerializerMethodField()
     is_nullable = CharField(read_only=True)
     numeric_value_min = IntegerField(read_only=True)
     numeric_value_max = IntegerField(read_only=True)
     text_value_options = SlugRelatedField(read_only=True, many=True, slug_field='option_text__pt_br')
+
+    def get_type(self, obj):
+        return pg_to_json_type.get(obj.data_type)
 
     class Meta:
         model = PlantTrait
@@ -21,35 +33,29 @@ class TraitSerializer(ModelSerializer):
             'name',
             'section_key',
             'section_name',
-            'data_type',
+            'type',
             'is_nullable',
             'numeric_value_min',
             'numeric_value_max',
             'text_value_options',
         ]
 
-class PlantTraitValueSerializer(ModelSerializer):
+class PlantTraitValuePreviewSerializer(ModelSerializer):
     trait_key = SlugRelatedField(read_only=True, source='trait', slug_field='name')
     trait_name = SlugRelatedField(read_only=True, source='trait', slug_field='name_text__pt_br')
-    section_key = SlugRelatedField(read_only=True, source='trait', slug_field='section')
-    section_name = SlugRelatedField(read_only=True, source='trait', slug_field='section_text__pt_br')
+    type = SerializerMethodField()
     value = SerializerMethodField()
+
+    def get_type(self, obj):
+        return pg_to_json_type.get(obj.trait.data_type)
 
     def get_value(self, obj):
         value = obj.value
         data_type = obj.trait.data_type
 
-        if data_type == 'int4range':
+        if data_type == 'int4range' or data_type == 'numrange':
             min, max = json.loads(value)
             return {
-                "type": "integer",
-                "minimum": min,
-                "maximum": max
-            }
-        elif data_type == 'numrange':
-            min, max = json.loads(value)
-            return {
-                "type": "numeric",
                 "minimum": min,
                 "maximum": max
             }
@@ -65,13 +71,45 @@ class PlantTraitValueSerializer(ModelSerializer):
         model = PlantValue
         fields = [
             'id',
-            'content_status',
             'trait_key',
             'trait_name',
+            'type',
+            'value',
+        ]
+
+class PlantTraitValueSerializer(PlantTraitValuePreviewSerializer):
+    section_key = SlugRelatedField(read_only=True, source='trait', slug_field='section')
+    section_name = SlugRelatedField(read_only=True, source='trait', slug_field='section_text__pt_br')
+    boundaries = SerializerMethodField()
+    content_author = UserPreviewSerializer()
+    source = SourceSerializer()
+
+    def get_boundaries(self, obj):
+        data_type = obj.trait.data_type
+
+        if data_type == 'int4range' or data_type == 'numrange':
+            return {
+                "minimum": obj.trait.numeric_value_min,
+                "maximum": obj.trait.numeric_value_max
+            }
+        if data_type == "varchar" or data_type == "varchar[]":
+            return [item.option_text.pt_br for item in obj.trait.text_value_options.all()]
+        if data_type == "boolean":
+            return [True, False]
+
+    class Meta(PlantTraitValuePreviewSerializer.Meta):
+        model = PlantValue
+        fields = PlantTraitValuePreviewSerializer.Meta.fields + [
             'section_key',
             'section_name',
-            'value',
-            'source_id',
+            'boundaries',
+            'content_status',
+            'content_author',
+            'source',
+            'endorsements',
+            'created_at',
+            'accepted_at',
+            'rejected_at',
         ]
 
 class ScientificNameSerializer(ModelSerializer):
@@ -80,15 +118,25 @@ class ScientificNameSerializer(ModelSerializer):
         fields = [
             'name',
             'taxonomic_status',
+            'content_status',
             'plant_id',
         ]
 
 class PlantScientificNameSerializer(ScientificNameSerializer):
+    content_author = UserPreviewSerializer()
+    source = SourceSerializer()
+
     class Meta:
         model = PlantScientificName
         fields = [
             'name',
             'taxonomic_status',
+            'content_status',
+            'content_author',
+            'endorsements',
+            'source',
+            'created_at',
+            'accepted_at',
         ]
 
 class PopularNameSerializer(ModelSerializer):
@@ -96,10 +144,14 @@ class PopularNameSerializer(ModelSerializer):
         model = PlantPopularName
         fields = [
             'name',
+            'content_status',
             'plant_id',
         ]
 
 class PlantPopularNameSerializer(PopularNameSerializer):
+    content_author = UserPreviewSerializer()
+    source = SourceSerializer()
+    
     class Meta:
         model = PlantPopularName
         fields = [
@@ -107,9 +159,36 @@ class PlantPopularNameSerializer(PopularNameSerializer):
             'content_status',
             'content_author',
             'endorsements',
-            'source_id',
+            'source',
             'created_at',
             'accepted_at',
+        ]
+
+class PlantNaturalOccurrenceRegionPreviewSerializer(ModelSerializer):
+    country = SlugRelatedField(read_only=True, slug_field='name_text__pt_br')
+    state = SlugRelatedField(read_only=True, slug_field='code')
+    biome = SlugRelatedField(read_only=True, slug_field='name')
+    vegetation_type = SlugRelatedField(read_only=True, slug_field='name')
+
+    class Meta:
+        model = PlantNaturalDistributionRegion
+        fields = [
+            'country',
+            'state',
+            'biome',
+            'vegetation_type',
+        ]
+
+class PlantNaturalOccurrenceRegionSerializer(PlantNaturalOccurrenceRegionPreviewSerializer):
+    content_author = UserPreviewSerializer(read_only=True)
+    source = SourceSerializer(read_only=True)
+
+    class Meta(PlantNaturalOccurrenceRegionPreviewSerializer.Meta):
+        fields = PlantNaturalOccurrenceRegionPreviewSerializer.Meta.fields + [
+            'content_status',
+            'content_author',
+            'source',
+            'created_at',
         ]
 
 class PlantSerializer(ModelSerializer):
@@ -120,7 +199,9 @@ class PlantSerializer(ModelSerializer):
         if params.get('with_popular_names'):
             self.fields['popular_names'] = SlugRelatedField(many=True, read_only=True, slug_field='name')
         if params.get('with_trait_values'):
-            self.fields['trait_values'] = PlantTraitValueSerializer(many=True, read_only=True, source='values')
+            self.fields['trait_values'] = PlantTraitValuePreviewSerializer(many=True, read_only=True, source='values')
+        if params.get('with_natural_occurrence_regions'):
+            self.fields['natural_occurrence_regions'] = PlantNaturalOccurrenceRegionPreviewSerializer(many=True, read_only=True)
 
         super().__init__(*args, **kwargs)
 
@@ -128,5 +209,8 @@ class PlantSerializer(ModelSerializer):
         model = Plant
         fields = [
             'id',
+            'content_status',
             'accepted_scientific_name',
+            'created_at',
+            'accepted_at',
         ]

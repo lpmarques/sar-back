@@ -5,6 +5,7 @@ class SourceSerializer(ModelSerializer):
     class Meta:
         model = Source
         fields = (
+            'id',
             'type',
             'year',
             'publication_title',
@@ -12,28 +13,32 @@ class SourceSerializer(ModelSerializer):
             'publisher',
             'url',
             'description',
-            'content_author',
         )
 
-class UserSerializer(ModelSerializer):
-    password = CharField(write_only=True)
+class UserPreviewSerializer(ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'email',
+            'first_name',
+            'last_name',
+        ]
+
+class UserSerializer(UserPreviewSerializer):
     country = SlugRelatedField(read_only=True, slug_field='name_text__pt_br')
     state = SlugRelatedField(read_only=True, slug_field='code')
     municipality = SlugRelatedField(read_only=True, slug_field='name')
     
-    class Meta:
+    class Meta(UserPreviewSerializer.Meta):
         model = User
-        fields = (
-            'email',
-            'password',
-            'first_name',
-            'last_name',
+        fields = UserPreviewSerializer.Meta.fields + [
             'occupation',
             'company',
             'country',
             'state',
             'municipality',
-        )
+        ]
 
 class UserCreationSerializer(Serializer):
     email = EmailField(max_length=255)
