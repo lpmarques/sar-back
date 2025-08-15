@@ -2,13 +2,15 @@ from django.contrib.postgres.aggregates import ArrayAgg
 import pandas as pd
 import json
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from catalog.models import Plant, PlantNaturalDistributionRegion, PlantPopularName, PlantScientificName, PlantValue
+from catalog.models import Plant, PlantNaturalOccurrenceRegion, PlantPopularName, PlantScientificName, PlantValue
 from catalog.serializers.models import *
 from catalog.serializers.parameters import *
 from catalog.serializers.values import *
+from core.models import ContentEndorsement
+from core.serializers import ContentEndorsementSerializer
 
 class PlantView(APIView):
     permission_classes = [AllowAny]
@@ -154,7 +156,7 @@ class NaturalOccurrenceRegionListView(APIView):
 
     def get_queryset(self):
         filters = NaturalOccurrenceRegionParamsSerializer(self.request.query_params).data
-        return PlantNaturalDistributionRegion.objects.denormalized().filter(**filters)
+        return PlantNaturalOccurrenceRegion.objects.denormalized().filter(**filters)
         
     def get(self, request):
         natural_occurrence_regions = self.get_queryset().values(

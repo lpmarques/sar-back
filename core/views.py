@@ -1,37 +1,20 @@
-from django.contrib import messages
 from django.contrib.auth import authenticate
-from django.core.exceptions import ObjectDoesNotExist
-from django.http import HttpResponse, JsonResponse
+from django.db.models.functions import Now
 from rest_framework import status
 from rest_framework.authtoken.models import Token
-from rest_framework.decorators import api_view
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from core.models import User
+from core.models import User, ContentEndorsement
 from core.permissions import IsOwnUser
-from core.serializers import UserSerializer, UserCreationSerializer, UserUpdateSerializer, UserTokenCreationSerializer
-
-@api_view(['GET'])
-def getRoutes(request):
-    routes = [
-        # 'GET /core',
-        # 'GET /core/user',
-        # 'GET /core/user/:id',
-        # 'POST /core/user/signup/',
-        # 'POST /core/user/login/',
-        # 'POST /core/user/logout/',
-    ]
-
-    return JsonResponse(routes, safe=False)
-
+from core.serializers import *
 
 class UserView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, id):
+    def get(self, request, user_id):
         try:
-            user = User.objects.get(id=id)
+            user = User.objects.get(id=user_id)
         except User.DoesNotExist:
             content = {'msg': 'Usuário não cadastrado.'}
             return Response(content, status=status.HTTP_404_NOT_FOUND)
@@ -120,6 +103,10 @@ class OwnUserView(APIView):
     def delete(self, request):
         request.user.anonymize()
 
+        tokens = Token.objects.filter(user=request.user)
+        for token in tokens:
+            token.delete()
+
         content = {
             'msg': ('Dados do usuário removidos com sucesso.')
         }
@@ -151,6 +138,7 @@ class UserTokenView(APIView):
         content = {
             'token': token.key,
             'user': {
+                'id': user.id,
                 'email': user.email,
                 'first_name': user.first_name,
                 'last_name': user.last_name 
@@ -168,3 +156,84 @@ class UserTokenView(APIView):
         content = {'success': ('Logout realizado com sucesso.')}
 
         return Response(content, status=status.HTTP_200_OK)
+
+    
+class ContentEndorsementView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ContentEndorsementSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            serializer.save()
+        except Exception as err:
+            return Response({'msg': err.args[0]}, status=status.HTTP_400_BAD_REQUEST)
+
+        content = {
+            'endorsement_id': serializer.data.get('id'),
+            'msg': 'Conteúdo aprovado com sucesso.'
+        }
+    
+        return Response(content, status=status.HTTP_200_OK)
+    
+    def delete(self, request, endorsement_id):        
+        try:
+            endorsement = ContentEndorsement.objects.get(id=endorsement_id)
+        except ContentEndorsement.DoesNotExist:
+            return Response({'msg': 'Aprovação não existe.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if endorsement.deleted_at:
+            return Response({'msg': 'Aprovação já removida.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        content_type = endorsement.content_type
+        try:
+            if content_type == 'plant_value':
+                content = PlantValue.objects.get(id=endorsement.plant_value_id)
+            elif content_type == 'plant_popular_name':
+                content = PlantPopularName.objects.get(id=endorsement.plant_popular_name_id)
+            elif content_type == 'plant_scientific_name':
+                content = PlantScientificName.objects.get(id=endorsement.plant_scientific_name_id)
+            elif content_type == 'plant_natural_occurrence_region':
+                content = PlantNaturalOccurrenceRegion.objects.get(id=endorsement.plant_natural_occurrence_region_id)
+        except ObjectDoesNotExist:
+            return Response({'msg': 'Conteúdo inexistente.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        content.endorsements -= 1
+        endorsement.deleted_at = Now()
+        endorsement.save()
+        content.save()
+
+        content = {
+            'msg': 'Aprovação removida com sucesso.'
+        }
+    
+        return Response(content, status=status.HTTP_200_OK)
+    
+
+class ContentEndorsementListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        param_serializer = ContentEndorsementParamsSerializer(data=self.request.query_params)
+
+        if not param_serializer.is_valid():
+            return Response(param_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        return ContentEndorsement.objects.active().filter(**param_serializer.data)
+
+    def get(self, request):
+        endorsements = self.get_queryset().denormalized()
+        serializer = ContentEndorsementSerializer(endorsements, many=True)
+    
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+
+class UserContentEndorsementListView(ContentEndorsementListView):
+    def get(self, request):
+        endorsements = self.get_queryset().filter(endorser_id=request.user.id)
+        serializer = UserContentEndorsementSerializer(endorsements, many=True)
+    
+        return Response(serializer.data, status=status.HTTP_200_OK)

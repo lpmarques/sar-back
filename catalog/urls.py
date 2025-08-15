@@ -2,7 +2,6 @@ from django.urls import include, path
 from . import views
 
 urlpatterns = [
-    # path('routes', views.getRoutes),
     path('plants', views.PlantListView.as_view()),
     path('plants/<int:plant_id>', views.PlantView.as_view()),
     path('plants/<int:plant_id>/scientific-names', views.PlantScientificNameListView.as_view()),

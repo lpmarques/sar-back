@@ -3,21 +3,25 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models.functions import Now
 from django.contrib.postgres.fields import ArrayField
-
+from core.querysets import ContentEndorsementQuerySet
 
 class ContentEndorsement(models.Model):
-    plant_data_id = models.IntegerField(blank=True, null=True)
-    plant_popular_name_id = models.IntegerField(blank=True, null=True)
-    plant_scientific_name_id = models.IntegerField(blank=True, null=True)
-    content_type = models.CharField(db_comment='[plant_data, plant_popular_name, plant_scientific_name]')
+    plant_value = models.ForeignKey('catalog.PlantValue', on_delete=models.DO_NOTHING, blank=True, null=True) # TODO: convert into polymorphic/generic relations
+    plant_popular_name = models.ForeignKey('catalog.PlantPopularName', on_delete=models.DO_NOTHING, blank=True, null=True)
+    plant_scientific_name = models.ForeignKey('catalog.PlantScientificName', on_delete=models.DO_NOTHING, blank=True, null=True)
+    plant_natural_occurrence_region = models.ForeignKey('catalog.PlantNaturalOccurrenceRegion', on_delete=models.DO_NOTHING, blank=True, null=True)
+    plant_invasion_risk_region = models.ForeignKey('catalog.PlantInvasionRiskRegion', on_delete=models.DO_NOTHING, blank=True, null=True)
+    content_type = models.CharField(db_comment='[plant_value, plant_popular_name, plant_scientific_name, plant_natural_occurrence_region, plant_invasion_risk_region]')
     endorser = models.ForeignKey('User', models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
+    objects = ContentEndorsementQuerySet().as_manager()
+
     class Meta:
         managed = False
         db_table = '"core"."content_endorsements"'
-        unique_together = (('plant_data_id', 'plant_popular_name_id', 'plant_scientific_name_id', 'endorser'),)
+        unique_together = (('plant_value', 'plant_popular_name', 'plant_scientific_name', 'plant_natural_occurrence_region', 'plant_invasion_risk_region', 'endorser', 'deleted_at'),)
 
 
 class Source(models.Model):
@@ -79,10 +83,6 @@ class User(EmailAbstractUser):
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['first_name', 'last_name', 'occupation']
 
-    class Meta:
-        managed = False
-        db_table = '"core"."users"'
-
     def anonymize(self):
         self.first_name = "Anon"
         self.last_name = "User"
@@ -93,3 +93,7 @@ class User(EmailAbstractUser):
         self.municipality = None
         self.deleted_at = Now()
         self.save()
+
+    class Meta:
+        managed = False
+        db_table = '"core"."users"'

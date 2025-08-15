@@ -36,13 +36,13 @@ class PlantQuerySet(QuerySet):
     )
   
   def with_natural_occurrence_regions(self, custom_filters: dict):
-    filters = {'content_status__in': ['proposed']} # TODO: change to 'accepted'
+    filters = {'content_status__in': ['accepted']}
     filters.update(custom_filters)
     
     return self.prefetch_related(
         Prefetch(
             'natural_occurrence_regions',
-            queryset=apps.get_model('catalog', 'PlantNaturalDistributionRegion').objects.denormalized().filter(**filters)
+            queryset=apps.get_model('catalog', 'PlantNaturalOccurrenceRegion').objects.denormalized().filter(**filters)
         )
     )
   

@@ -1,5 +1,5 @@
 from rest_framework.serializers import CharField, IntegerField, ModelSerializer, SerializerMethodField, SlugRelatedField
-from catalog.models import Plant, PlantNaturalDistributionRegion, PlantPopularName, PlantScientificName, PlantTrait, PlantValue
+from catalog.models import Plant, PlantNaturalOccurrenceRegion, PlantPopularName, PlantScientificName, PlantTrait, PlantValue
 from core.serializers import SourceSerializer, UserPreviewSerializer
 import json
 
@@ -171,7 +171,7 @@ class PlantNaturalOccurrenceRegionPreviewSerializer(ModelSerializer):
     vegetation_type = SlugRelatedField(read_only=True, slug_field='name')
 
     class Meta:
-        model = PlantNaturalDistributionRegion
+        model = PlantNaturalOccurrenceRegion
         fields = [
             'country',
             'state',

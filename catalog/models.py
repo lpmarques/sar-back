@@ -40,7 +40,7 @@ class PlantInvasionRiskRegion(models.Model):
         unique_together = (('plant_scientific_name', 'plant', 'country', 'state', 'biome'),)
 
 
-class PlantNaturalDistributionRegion(models.Model): # rename table as plant_natural_occurrence_regions
+class PlantNaturalOccurrenceRegion(models.Model):
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='natural_occurrence_regions')
     country = models.ForeignKey(Country, models.DO_NOTHING)
     state = models.ForeignKey(State, models.DO_NOTHING, blank=True, null=True)
@@ -57,7 +57,7 @@ class PlantNaturalDistributionRegion(models.Model): # rename table as plant_natu
 
     class Meta:
         managed = False
-        db_table = '"catalog"."plant_natural_distribution_regions"'
+        db_table = '"catalog"."plant_natural_occurrence_regions"'
         unique_together = (('plant', 'country', 'state', 'biome', 'vegetation_type'),)
 
 
@@ -165,4 +165,4 @@ class PlantValueText(models.Model):
 
     class Meta:
         managed = False
-        db_table = '"catalog"."plant_value_texts"' # TODO: mudar nome da tabela para plant_values_texts e transformar relação em M2M
+        db_table = '"catalog"."plant_values_texts"' # TODO: transformar relação em M2M

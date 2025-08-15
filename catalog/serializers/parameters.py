@@ -1,4 +1,4 @@
-from rest_framework.serializers import Serializer, Field, CharField, BooleanField, SerializerMethodField
+from rest_framework.serializers import Serializer, Field, CharField, BooleanField
 
 class StringListField(Field):
     def __init__(self, separator=",", *args, **kwargs):
