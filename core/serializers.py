@@ -1,9 +1,28 @@
 from django.core.exceptions import ObjectDoesNotExist
-from rest_framework.serializers import ModelSerializer, Serializer, EmailField, CharField, IntegerField, SlugRelatedField, ValidationError
+from django.core.validators import URLValidator
+from rest_framework.serializers import ModelSerializer, Serializer, EmailField, CharField, IntegerField, SerializerMethodField, SlugRelatedField, ValidationError
 from core.models import ContentEndorsement, Source, User
 from catalog.models import PlantNaturalOccurrenceRegion, PlantPopularName, PlantScientificName, PlantValue
+import re
 
 class SourceSerializer(ModelSerializer):
+    content_author_id = IntegerField(allow_null=False)
+
+    def validate_url(self, value):
+        try:
+            URLValidator(value)
+        except ValidationError as e:
+            raise ValidationError('URL inválida.')
+        
+        return value
+    
+    def validate_publication_authors(self, value):
+        for author in value:
+            if re.match(r'/^(([A-Z][a-z]+ ?(d[eao][sl]? )?){2,})|((d[eao][sl]? )?[A-Z][a-z]+,? ([A-Z]\. ?)+)$/', author):
+                raise ValidationError(f'Autor inválido: {author}. Formatos aceitos: "Nome Sobrenome" ou "Sobrenome N."')
+        
+        return value
+
     class Meta:
         model = Source
         fields = (
@@ -15,6 +34,7 @@ class SourceSerializer(ModelSerializer):
             'publisher',
             'url',
             'description',
+            'content_author_id',
         )
 
 class UserPreviewSerializer(ModelSerializer):
@@ -135,6 +155,9 @@ class ContentEndorsementSerializer(EndorsementValidationMixin, ModelSerializer):
                 content = PlantNaturalOccurrenceRegion.objects.get(id=content_id)
         except ObjectDoesNotExist:
             raise ValidationError("Conteúdo inexistente.")
+        
+        if validated_data.get('endorser_id') == content.content_author:
+            raise ValidationError("Somente outro usuário pode aprovar conteúdo criado por você.")
 
         content.endorsements += 1
         content.save()

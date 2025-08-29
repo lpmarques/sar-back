@@ -1,4 +1,5 @@
 from django.contrib.postgres.aggregates import ArrayAgg
+from django.db.models.functions import Now
 import pandas as pd
 import json
 from rest_framework import status
@@ -8,9 +9,6 @@ from rest_framework.views import APIView
 from catalog.models import Plant, PlantNaturalOccurrenceRegion, PlantPopularName, PlantScientificName, PlantValue
 from catalog.serializers.models import *
 from catalog.serializers.parameters import *
-from catalog.serializers.values import *
-from core.models import ContentEndorsement
-from core.serializers import ContentEndorsementSerializer
 
 class PlantView(APIView):
     permission_classes = [AllowAny]
@@ -21,9 +19,9 @@ class PlantView(APIView):
     def get_queryset(self):
         params = PlantParamsSerializer(self.request.query_params).data
 
-        query = Plant.objects.with_popular_names(PopularNameFilterParamsSerializer(self.fetch_filter_params(params, 'popular_names')).data) if params.get('with_popular_names') else Plant.objects
-        query = query.with_scientific_names(ScientificNameFilterParamsSerializer(self.fetch_filter_params(params, 'scientific_names')).data) if params.get('with_scientific_names') else query
-        query = query.with_trait_values(PlantTraitValueFilterParamsSerializer(self.fetch_filter_params(params, 'trait_values')).data) if params.get('with_trait_values') else query
+        query = Plant.objects.with_popular_names(PopularNameParamsSerializer(self.fetch_filter_params(params, 'popular_names')).data) if params.get('with_popular_names') else Plant.objects
+        query = query.with_scientific_names(ScientificNameParamsSerializer(self.fetch_filter_params(params, 'scientific_names')).data) if params.get('with_scientific_names') else query
+        query = query.with_trait_values(PlantTraitValueParamsSerializer(self.fetch_filter_params(params, 'trait_values')).data) if params.get('with_trait_values') else query
         query = query.with_natural_occurrence_regions(NaturalOccurrenceRegionParamsSerializer(self.fetch_filter_params(params, 'natural_occurrence_regions')).data) if params.get('with_natural_occurrence_regions') else query
 
         return query
@@ -34,8 +32,8 @@ class PlantView(APIView):
         try:
             plant = self.get_queryset().get(id=plant_id)
         except Plant.DoesNotExist:
-            content = {'msg': 'Planta não cadastrada'}
-            return Response(content, status=status.HTTP_400_BAD_REQUEST)
+            content = {'msg': 'Planta não encontrada.'}
+            return Response(content, status=status.HTTP_404_NOT_FOUND)
 
         serializer = PlantSerializer(plant, params=params.data)
 
@@ -43,8 +41,6 @@ class PlantView(APIView):
 
 
 class PlantListView(PlantView):
-    permission_classes = [AllowAny]
-
     def get(self, request):
         filters = PlantParamsSerializer(self.fetch_filter_params(request.query_params, 'plant')).data
         plants = self.get_queryset().filter(**filters)
@@ -54,25 +50,87 @@ class PlantListView(PlantView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class TraitListView(APIView):
+class TraitView(APIView):
     permission_classes = [AllowAny]
 
+    def get_queryset(self):
+        return PlantTrait.objects.denormalized()
+
+    def get(self, request, trait_id):
+        try:
+            trait = self.get_queryset().get(id=trait_id)
+        except PlantTrait.DoesNotExist:
+            return Response({'msg': 'Traço não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = TraitSerializer(trait)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class TraitListView(TraitView):
     def get(self, request):
         filters = {'is_site_specific': False}
-        filters.update(TraitFilterParamsSerializer(request.query_params).data)
+        filters.update(TraitParamsSerializer(request.query_params).data)
 
-        traits = PlantTrait.objects.denormalized().filter(**filters)
+        traits = self.get_queryset().filter(**filters)
 
         serializer = TraitSerializer(traits, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+class TraitValueView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data
+        data.update({'content_author_id': request.user.id})
+        serializer = TraitValueSerializer(data=data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            serializer.save()
+        except Exception as err:
+            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        content = {
+            'trait_value_id': serializer.data.get('id'),
+            'msg': 'Versão cadastrada com sucesso.'
+        }
+    
+        return Response(content, status=status.HTTP_201_CREATED)
+    
+    def delete(self, request, trait_value_id):
+        
+        try:
+            trait_value = PlantValue.objects.get(id=trait_value_id, content_status="proposed", content_author_id=request.user.id)
+        except PlantValue.DoesNotExist:
+            return Response({'msg': 'Não há proposta cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if trait_value.content_author_id != request.user.id:
+            return Response({'msg': 'Você não tem autorização para rejeitar essa proposta.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if trait_value.rejected_at:
+            return Response({'msg': 'Proposta já rejeitada.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        trait_value.content_status = "rejected"
+        trait_value.rejected_at = Now() # TODO: add content_approver_id and content_rejector_id fields to plant_values table
+        trait_value.save()
+
+        content = {
+            'msg': 'Proposta rejeitada com sucesso.'
+        }
+    
+        return Response(content, status=status.HTTP_200_OK)
+
+
 class PlantTraitValueListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, plant_id):
-        filters = PlantTraitValueFilterParamsSerializer(request.query_params).data
+        filters = PlantTraitValueParamsSerializer(request.query_params).data
         filters.update({'plant_id': plant_id})
 
         try:
@@ -96,7 +154,7 @@ class PopularNameListView(APIView):
         return grouped_df.reset_index().to_dict(orient='records')
     
     def get_queryset(self):
-        filters = PopularNameFilterParamsSerializer(self.request.query_params).data
+        filters = PopularNameParamsSerializer(self.request.query_params).data
 
         return PlantPopularName.objects.filter(**filters)
 
@@ -126,7 +184,7 @@ class ScientificNameListView(APIView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        filters = ScientificNameFilterParamsSerializer(self.request.query_params).data
+        filters = ScientificNameParamsSerializer(self.request.query_params).data
 
         return PlantScientificName.objects.filter(**filters)
 

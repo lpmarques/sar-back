@@ -9,4 +9,6 @@ urlpatterns = [
     path('endorsement', views.ContentEndorsementView.as_view()),
     path('endorsements', views.ContentEndorsementListView.as_view()),
     path('endorsements/<int:endorsement_id>', views.ContentEndorsementView.as_view()),
+    path('source', views.SourceView.as_view()),
+    path('sources', views.SourceListView.as_view()),
 ]

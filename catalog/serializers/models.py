@@ -1,5 +1,6 @@
-from rest_framework.serializers import CharField, IntegerField, ModelSerializer, SerializerMethodField, SlugRelatedField
-from catalog.models import Plant, PlantNaturalOccurrenceRegion, PlantPopularName, PlantScientificName, PlantTrait, PlantValue
+from rest_framework.serializers import CharField, DateTimeField, IntegerField, ListField, ModelSerializer, Serializer, SerializerMethodField, SlugRelatedField, ValidationError
+from catalog.models import Plant, PlantNaturalOccurrenceRegion, PlantPopularName, PlantScientificName, PlantTrait, PlantValue, PlantValueText
+from core.models import Text
 from core.serializers import SourceSerializer, UserPreviewSerializer
 import json
 
@@ -12,10 +13,37 @@ pg_to_json_type = {
     'boolean': 'boolean'
 }
 
+class WritableSerializerMethodField(SerializerMethodField):
+    def __init__(self, **kwargs):
+        self.setter_method_name = kwargs.pop('setter_method_name', None)
+
+        super().__init__(**kwargs)
+
+        self.read_only = False
+
+    def bind(self, field_name, parent):
+        retval = super().bind(field_name, parent)
+        if not self.setter_method_name:
+            self.setter_method_name = f'set_{field_name}'
+
+        return retval
+
+    def get_default(self):
+        default = super().get_default()
+
+        return {
+            self.field_name: default
+        }
+
+    def to_internal_value(self, value):
+        method = getattr(self.parent, self.setter_method_name)
+        return {self.field_name: method(value)}
+
 class TraitSerializer(ModelSerializer):
-    key = CharField(read_only=True, source='name')
+    id = IntegerField(read_only=True)
+    slug = CharField(read_only=True, source='name')
     name = SlugRelatedField(read_only=True, source='name_text', slug_field='pt_br')
-    section_key = CharField(read_only=True, source='section')
+    section_slug = CharField(read_only=True, source='section')
     section_name = SlugRelatedField(read_only=True, source='section_text', slug_field='pt_br')
     type = SerializerMethodField()
     is_nullable = CharField(read_only=True)
@@ -29,9 +57,10 @@ class TraitSerializer(ModelSerializer):
     class Meta:
         model = PlantTrait
         fields = [
-            'key',
+            'id',
+            'slug',
             'name',
-            'section_key',
+            'section_slug',
             'section_name',
             'type',
             'is_nullable',
@@ -40,11 +69,30 @@ class TraitSerializer(ModelSerializer):
             'text_value_options',
         ]
 
-class PlantTraitValuePreviewSerializer(ModelSerializer):
-    trait_key = SlugRelatedField(read_only=True, source='trait', slug_field='name')
+class TraitValueSerializer(ModelSerializer):
+    # read
+    id = IntegerField(read_only=True)
+    trait_slug = SlugRelatedField(read_only=True, source='trait', slug_field='name')
     trait_name = SlugRelatedField(read_only=True, source='trait', slug_field='name_text__pt_br')
+    section_slug = SlugRelatedField(read_only=True, source='trait', slug_field='section')
+    section_name = SlugRelatedField(read_only=True, source='trait', slug_field='section_text__pt_br')
     type = SerializerMethodField()
-    value = SerializerMethodField()
+    boundaries = SerializerMethodField()
+    content_status = CharField(read_only=True)
+    content_author = UserPreviewSerializer(read_only=True)
+    source = SourceSerializer(read_only=True)
+    endorsements = IntegerField(read_only=True)
+    created_at = DateTimeField(read_only=True)
+    accepted_at = DateTimeField(read_only=True)
+    rejected_at = DateTimeField(read_only=True)
+    # write
+    source_id = IntegerField(write_only=True, required=True)
+    content_author_id = IntegerField(write_only=True, required=True)
+    content_author_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
+    # both
+    value = WritableSerializerMethodField(setter_method_name='set_value_field')
+    trait_id = IntegerField(required=True)
+    plant_id = IntegerField(required=True)
 
     def get_type(self, obj):
         return pg_to_json_type.get(obj.trait.data_type)
@@ -53,7 +101,7 @@ class PlantTraitValuePreviewSerializer(ModelSerializer):
         value = obj.value
         data_type = obj.trait.data_type
 
-        if data_type == 'int4range' or data_type == 'numrange':
+        if data_type in ['int4range', 'numrange']:
             min, max = json.loads(value)
             return {
                 "minimum": min,
@@ -67,27 +115,10 @@ class PlantTraitValuePreviewSerializer(ModelSerializer):
         else:
             return json.loads(value)
 
-    class Meta:
-        model = PlantValue
-        fields = [
-            'id',
-            'trait_key',
-            'trait_name',
-            'type',
-            'value',
-        ]
-
-class PlantTraitValueSerializer(PlantTraitValuePreviewSerializer):
-    section_key = SlugRelatedField(read_only=True, source='trait', slug_field='section')
-    section_name = SlugRelatedField(read_only=True, source='trait', slug_field='section_text__pt_br')
-    boundaries = SerializerMethodField()
-    content_author = UserPreviewSerializer()
-    source = SourceSerializer()
-
     def get_boundaries(self, obj):
         data_type = obj.trait.data_type
 
-        if data_type == 'int4range' or data_type == 'numrange':
+        if data_type in ['int4range', 'numrange']:
             return {
                 "minimum": obj.trait.numeric_value_min,
                 "maximum": obj.trait.numeric_value_max
@@ -96,20 +127,121 @@ class PlantTraitValueSerializer(PlantTraitValuePreviewSerializer):
             return [item.option_text.pt_br for item in obj.trait.text_value_options.all()]
         if data_type == "boolean":
             return [True, False]
+        
+    def set_value_field(self, value): # called before validation
+        return value
+    
+    def value_to_string_value(self, value): # called before writing
+        if self.trait.data_type in ['int4range', 'numrange']:
+            return json.dumps([value.get('minimum'), value.get('maximum')])
+        elif self.trait.data_type in ["varchar", "varchar[]"]:
+            values = value if self.trait.data_type == "varchar[]" else [value]
+            texts = Text.objects.filter(**{'pt_br__in': values})
+            return json.dumps(sorted([text.en for text in texts]))
 
-    class Meta(PlantTraitValuePreviewSerializer.Meta):
+        return json.dumps(value)
+
+    def validate(self, data):
+        value = data.get('value')
+
+        try:
+            self.trait = PlantTrait.objects.denormalized().get(id=data.get('trait_id'))
+        except PlantTrait.DoesNotExist:
+            raise ValidationError("Traço inexistente.")
+
+        matching_values = PlantValue.objects.filter(
+            plant_id=data['plant_id'],
+            trait_id=self.trait.id,
+            content_status__in=["accepted", "proposed"],
+            value=self.value_to_string_value(value),
+        )
+        if matching_values:
+            raise ValidationError("Valor igual ao valor aceito ou a outra proposta já cadastrada.")
+
+        if self.trait.data_type in ["varchar", "varchar[]"]:
+            values = value if self.trait.data_type == "varchar[]" else [value]
+            if len(values) == 0:
+                raise ValidationError("Valor não pode ser vazio.")
+            options = TraitSerializer(self.trait).data.get('text_value_options')
+            for item in values:
+                if item not in options:
+                    raise ValidationError(
+                        f"Valor '{item}' inválido para o traço. Valores permitidos: {json.dumps(options)}"
+                    )
+        if self.trait.data_type == "number":
+            if value >= self.trait.numeric_value_min and value <= self.trait.numeric_value_max:
+                raise ValidationError(
+                    f"Valor '{value}' fora do intervalo permitido para o traço: de {self.trait.numeric_value_min} até {self.trait.numeric_value_max}"
+                )
+        if self.trait.data_type == "range":
+            if (value.get('minimum') >= value.get('maximum')):
+                raise ValidationError("O valor mínimo do intervalo não pode ser inferior ao valor máximo")
+            if (value.get('minimum') < self.trait.numericValueMin):
+                raise ValidationError(f"O valor mínimo está fora do intervalo permitido para o traço: de {self.trait.numeric_value_min} até {self.trait.numeric_value_max}")
+            if (value.get('maximum') > self.trait.numericValueMax):
+                raise ValidationError(f"O valor máximo está fora do intervalo permitido para o traço: de {self.trait.numeric_value_min} até {self.trait.numeric_value_max}")
+            
+        return data
+        
+    def create(self, validated_data):
+        value = validated_data.get('value')
+
+        validated_data['content_status'] = 'proposed'
+        validated_data['value'] = self.value_to_string_value(value)
+        validated_data['trait_id'] = self.trait.id
+        validated_data.pop('trait_slug', None)
+
+        trait_value = PlantValue.objects.create(**validated_data)
+
+        if self.trait.data_type in ["varchar", "varchar[]"]:
+            list = value if self.trait.data_type == "varchar[]" else [value]
+            texts = Text.objects.filter(**{'pt_br__in': list})
+            value_texts = [PlantValueText(plant_value_id=trait_value.id, text_id=text.id) for text in texts]
+            PlantValueText.objects.bulk_create(value_texts)
+
+        return trait_value
+
+    class Meta:
         model = PlantValue
-        fields = PlantTraitValuePreviewSerializer.Meta.fields + [
-            'section_key',
+        fields = [
+            'id',
+            'trait_id',
+            'plant_id',
+            'trait_slug',
+            'trait_name',
+            'section_slug',
             'section_name',
+            'type',
+            'value',
             'boundaries',
+            'source',
+            'source_id',
             'content_status',
             'content_author',
-            'source',
+            'content_author_id',
+            'content_author_comment',
             'endorsements',
             'created_at',
             'accepted_at',
             'rejected_at',
+        ]
+
+class PlantTraitValueSerializer(TraitValueSerializer):
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        data.pop('plant_id', None)
+
+        return data
+
+class PlantTraitValuePreviewSerializer(PlantTraitValueSerializer):
+    class Meta:
+        model = PlantValue
+        fields = [
+            'id',
+            'trait_slug',
+            'trait_name',
+            'type',
+            'value',
         ]
 
 class ScientificNameSerializer(ModelSerializer):
@@ -164,11 +296,20 @@ class PlantPopularNameSerializer(PopularNameSerializer):
             'accepted_at',
         ]
 
-class PlantNaturalOccurrenceRegionPreviewSerializer(ModelSerializer):
+class NaturalOccurrenceRegionSerializer(Serializer):
+    country = CharField(read_only=True, source='country__name_text__pt_br')
+    state = CharField(read_only=True, source='state__code')
+    biome = CharField(read_only=True, source='biome__name')
+    vegetation_type = CharField(read_only=True, source='vegetation_type__name')
+    plant_ids = ListField(read_only=True)
+
+class PlantNaturalOccurrenceRegionSerializer(ModelSerializer):
     country = SlugRelatedField(read_only=True, slug_field='name_text__pt_br')
     state = SlugRelatedField(read_only=True, slug_field='code')
     biome = SlugRelatedField(read_only=True, slug_field='name')
     vegetation_type = SlugRelatedField(read_only=True, slug_field='name')
+    content_author = UserPreviewSerializer(read_only=True)
+    source = SourceSerializer(read_only=True)
 
     class Meta:
         model = PlantNaturalOccurrenceRegion
@@ -177,18 +318,20 @@ class PlantNaturalOccurrenceRegionPreviewSerializer(ModelSerializer):
             'state',
             'biome',
             'vegetation_type',
-        ]
-
-class PlantNaturalOccurrenceRegionSerializer(PlantNaturalOccurrenceRegionPreviewSerializer):
-    content_author = UserPreviewSerializer(read_only=True)
-    source = SourceSerializer(read_only=True)
-
-    class Meta(PlantNaturalOccurrenceRegionPreviewSerializer.Meta):
-        fields = PlantNaturalOccurrenceRegionPreviewSerializer.Meta.fields + [
             'content_status',
             'content_author',
             'source',
             'created_at',
+        ]
+
+class PlantNaturalOccurrenceRegionPreviewSerializer(PlantNaturalOccurrenceRegionSerializer):
+    class Meta:
+        model = PlantNaturalOccurrenceRegion
+        fields = [
+            'country',
+            'state',
+            'biome',
+            'vegetation_type',
         ]
 
 class PlantSerializer(ModelSerializer):

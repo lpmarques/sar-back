@@ -26,7 +26,7 @@ class ContentEndorsement(models.Model):
 
 class Source(models.Model):
     name = models.CharField(unique=True, blank=True, null=True)
-    type = models.CharField()
+    type = models.CharField() # TODO: create source_types table with is_static and name_text_id fields
     year = models.IntegerField(blank=True, null=True)
     publication_title = models.CharField()
     publication_authors = ArrayField(
@@ -43,6 +43,7 @@ class Source(models.Model):
     class Meta:
         managed = False
         db_table = '"core"."sources"'
+        unique_together = (('publication_title', 'year'),)
 
 
 class Text(models.Model):
