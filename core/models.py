@@ -5,13 +5,27 @@ from django.db.models.functions import Now
 from django.contrib.postgres.fields import ArrayField
 from core.querysets import ContentEndorsementQuerySet
 
+class Content(models.Model):
+    type = models.CharField(db_comment='[plant, popular_name, taxon, trait_value, natural_occurrence_region, invasion_risk_region]')
+    status = models.CharField(db_default='proposed', db_comment='[proposed, accepted, rejected]')
+    proposer = models.ForeignKey('User', models.DO_NOTHING, related_name="proposed_contents")
+    acceptor = models.ForeignKey('User', models.DO_NOTHING, blank=True, null=True, related_name="accepted_contents")
+    rejector = models.ForeignKey('User', models.DO_NOTHING, blank=True, null=True, related_name="rejected_contents")
+    proposer_comment = models.CharField(blank=True, null=True)
+    rejector_comment = models.CharField(blank=True, null=True)
+    source = models.ForeignKey('Source', models.DO_NOTHING, blank=True, null=True, related_name="contents")
+    endorsements = models.IntegerField(db_default=0)
+    proposed_at = models.DateTimeField(db_default=Now())
+    accepted_at = models.DateTimeField(blank=True, null=True)
+    rejected_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = '"core"."contents"'
+
+
 class ContentEndorsement(models.Model):
-    plant_value = models.ForeignKey('catalog.PlantValue', on_delete=models.DO_NOTHING, blank=True, null=True) # TODO: convert into polymorphic/generic relations
-    plant_popular_name = models.ForeignKey('catalog.PlantPopularName', on_delete=models.DO_NOTHING, blank=True, null=True)
-    plant_scientific_name = models.ForeignKey('catalog.PlantScientificName', on_delete=models.DO_NOTHING, blank=True, null=True)
-    plant_natural_occurrence_region = models.ForeignKey('catalog.PlantNaturalOccurrenceRegion', on_delete=models.DO_NOTHING, blank=True, null=True)
-    plant_invasion_risk_region = models.ForeignKey('catalog.PlantInvasionRiskRegion', on_delete=models.DO_NOTHING, blank=True, null=True)
-    content_type = models.CharField(db_comment='[plant_value, plant_popular_name, plant_scientific_name, plant_natural_occurrence_region, plant_invasion_risk_region]')
+    content = models.ForeignKey(Content, models.DO_NOTHING)
     endorser = models.ForeignKey('User', models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
@@ -21,15 +35,15 @@ class ContentEndorsement(models.Model):
     class Meta:
         managed = False
         db_table = '"core"."content_endorsements"'
-        unique_together = (('plant_value', 'plant_popular_name', 'plant_scientific_name', 'plant_natural_occurrence_region', 'plant_invasion_risk_region', 'endorser', 'deleted_at'),)
+        unique_together = (('content', 'endorser', 'deleted_at'),)
 
 
 class Source(models.Model):
     name = models.CharField(unique=True, blank=True, null=True)
     type = models.CharField() # TODO: create source_types table with is_static and name_text_id fields
     year = models.IntegerField(blank=True, null=True)
-    publication_title = models.CharField()
-    publication_authors = ArrayField(
+    title = models.CharField()
+    authors = ArrayField(
         models.CharField(), blank=True, null=True
     )
     publisher = models.CharField(blank=True, null=True)
@@ -43,7 +57,7 @@ class Source(models.Model):
     class Meta:
         managed = False
         db_table = '"core"."sources"'
-        unique_together = (('publication_title', 'year'),)
+        unique_together = (('title', 'year'),)
 
 
 class Text(models.Model):

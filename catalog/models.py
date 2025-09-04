@@ -1,18 +1,14 @@
 from django.db import models
 from django.db.models.functions import Now
-from catalog.querysets import PlantQuerySet, PlantNaturalOccurrenceRegionQuerySet, PlantPopularNameQuerySet, PlantScientificNameQuerySet, PlantTraitQuerySet, PlantValueQuerySet
-from core.models import Source, User, Text
+from catalog.querysets import InvasionRiskRegionQuerySet, NaturalOccurrenceRegionQuerySet, PlantQuerySet, PopularNameQuerySet, TaxonQuerySet, TraitQuerySet, TraitValueQuerySet
+from core.models import Content, Source, User, Text
 from geography.models import Biome, Country, State, VegetationType
 
 class Plant(models.Model):
-    accepted_scientific_name = models.CharField(unique=True)
+    content = models.ForeignKey(Content, models.DO_NOTHING)
+    accepted_taxon_name = models.CharField(unique=True)
+    accepted_family_name = models.CharField()
     color_hex = models.CharField(unique=True)
-    content_status = models.CharField(db_default='proposed', db_comment='[proposed, accepted, rejected]')
-    content_author = models.ForeignKey(User, models.DO_NOTHING)
-    content_author_comment = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(db_default=Now())
-    accepted_at = models.DateTimeField(db_default=Now())
-    rejected_at = models.DateTimeField(blank=True, null=True)
 
     objects = PlantQuerySet().as_manager()
 
@@ -21,92 +17,70 @@ class Plant(models.Model):
         db_table = '"catalog"."plants"'
 
 
-class PlantInvasionRiskRegion(models.Model):
-    plant_scientific_name = models.CharField()
-    plant = models.ForeignKey(Plant, models.DO_NOTHING, blank=True, null=True)
+class InvasionRiskRegion(models.Model):
+    content = models.ForeignKey(Content, models.DO_NOTHING)
+    taxon_name = models.CharField()
+    plant = models.ForeignKey(Plant, models.DO_NOTHING, blank=True, null=True, related_name='invasion_risk_regions')
     country = models.ForeignKey(Country, models.DO_NOTHING)
     state = models.ForeignKey(State, models.DO_NOTHING, blank=True, null=True)
     biome = models.ForeignKey(Biome, models.DO_NOTHING, blank=True, null=True)
-    source = models.ForeignKey(Source, models.DO_NOTHING)
-    content_status = models.CharField(db_default='proposed')
-    content_author = models.ForeignKey(User, models.DO_NOTHING)
-    content_author_comment = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(db_default=Now())
-    deleted_at = models.DateTimeField(blank=True, null=True)
+
+    objects = InvasionRiskRegionQuerySet.as_manager()
 
     class Meta:
         managed = False
-        db_table = '"catalog"."plant_invasion_risk_regions"'
-        unique_together = (('plant_scientific_name', 'plant', 'country', 'state', 'biome'),)
+        db_table = '"catalog"."invasion_risk_regions"'
 
 
-class PlantNaturalOccurrenceRegion(models.Model):
+class NaturalOccurrenceRegion(models.Model):
+    content = models.ForeignKey(Content, models.DO_NOTHING)
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='natural_occurrence_regions')
     country = models.ForeignKey(Country, models.DO_NOTHING)
     state = models.ForeignKey(State, models.DO_NOTHING, blank=True, null=True)
     biome = models.ForeignKey(Biome, models.DO_NOTHING, blank=True, null=True)
     vegetation_type = models.ForeignKey(VegetationType, models.DO_NOTHING, blank=True, null=True)
-    source = models.ForeignKey(Source, models.DO_NOTHING)
-    content_status = models.CharField(db_default='proposed', db_comment='[proposed, accepted, rejected]')
-    content_author = models.ForeignKey(User, models.DO_NOTHING)
-    content_author_comment = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(db_default=Now())
-    deleted_at = models.DateTimeField(blank=True, null=True)
 
-    objects = PlantNaturalOccurrenceRegionQuerySet.as_manager()
+    objects = NaturalOccurrenceRegionQuerySet.as_manager()
 
     class Meta:
         managed = False
-        db_table = '"catalog"."plant_natural_occurrence_regions"'
-        unique_together = (('plant', 'country', 'state', 'biome', 'vegetation_type'),)
+        db_table = '"catalog"."natural_occurrence_regions"'
 
 
-class PlantPopularName(models.Model): # TODO: remove plant_id FK and add join table for M2M rel. with plants table
-    name = models.CharField()
+class PopularName(models.Model): # TODO: remove plant_id FK and add join table for M2M rel. with plants table
+    content = models.ForeignKey(Content, models.DO_NOTHING)
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='popular_names')
-    content_status = models.CharField(db_default='proposed', db_comment='[proposed, accepted, rejected]')
-    content_author = models.ForeignKey(User, models.DO_NOTHING)
-    content_author_comment = models.TextField(blank=True, null=True)
-    source = models.ForeignKey(Source, models.DO_NOTHING)
-    endorsements = models.IntegerField(db_default=0)
-    created_at = models.DateTimeField(db_default=Now())
-    accepted_at = models.DateTimeField(blank=True, null=True)
-    rejected_at = models.DateTimeField(blank=True, null=True)
-
-    objects = PlantPopularNameQuerySet().as_manager()
-
-    class Meta:
-        managed = False
-        db_table = '"catalog"."plant_popular_names"'
-        unique_together = (('plant', 'name', 'content_status', 'rejected_at'),)
-
-
-class PlantScientificName(models.Model): # TODO: replace with "biological_taxonomy" table containing rank fields (species, genus, family, etc) + taxonomic_status
-    name = models.CharField(unique=True)
-    plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='scientific_names')
-    taxonomic_status = models.CharField(db_comment='[accepted, synonym]')
-    content_status = models.CharField(db_default='proposed', db_comment='[proposed, accepted, rejected]')
-    content_author = models.ForeignKey(User, models.DO_NOTHING)
-    content_author_comment = models.TextField(blank=True, null=True)
-    source = models.ForeignKey(Source, models.DO_NOTHING)
-    endorsements = models.IntegerField(db_default=0)
-    created_at = models.DateTimeField(db_default=Now())
-    accepted_at = models.DateTimeField(blank=True, null=True)
-    rejected_at = models.DateTimeField(blank=True, null=True)
-
-    objects = PlantScientificNameQuerySet().as_manager()
-
-    class Meta:
-        managed = False
-        db_table = '"catalog"."plant_scientific_names"'
-        unique_together = (('plant', 'name', 'content_status', 'rejected_at'),)
-
-
-class PlantTrait(models.Model):
     name = models.CharField()
-    name_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='name_text_plant_traits')
+
+    objects = PopularNameQuerySet().as_manager()
+
+    class Meta:
+        managed = False
+        db_table = '"catalog"."popular_names"'
+
+
+class Taxon(models.Model):
+    content = models.ForeignKey(Content, models.DO_NOTHING)
+    plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='taxa')
+    family = models.CharField()
+    genus = models.CharField()
+    species = models.CharField()
+    subspecies = models.CharField(blank=True, null=True)
+    variety = models.CharField(blank=True, null=True)
+    taxonomic_status = models.CharField(db_comment='[accepted, synonym]')
+
+    objects = TaxonQuerySet().as_manager()
+
+    class Meta:
+        managed = False
+        db_table = '"catalog"."taxa"'
+
+
+class Trait(models.Model):
+    name = models.CharField()
+    name_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='name_text_traits')
     section = models.CharField(blank=True, null=True)
-    section_text = models.ForeignKey(Text, models.DO_NOTHING, blank=True, null=True, related_name='section_text_plant_traits')
+    section_text = models.ForeignKey(Text, models.DO_NOTHING, blank=True, null=True, related_name='section_text_traits')
     data_type = models.CharField()
     is_nullable = models.BooleanField()
     is_site_specific = models.BooleanField()
@@ -116,17 +90,19 @@ class PlantTrait(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
-    objects = PlantTraitQuerySet().as_manager()
+    text_value_options = models.ManyToManyField(Text, through='TraitTextValueOption')
+
+    objects = TraitQuerySet().as_manager()
 
     class Meta:
         managed = False
-        db_table = '"catalog"."plant_traits"'
+        db_table = '"catalog"."traits"'
         unique_together = (('name', 'section'),)
 
 
-class PlantTraitTextValueOption(models.Model):
-    pk = models.CompositePrimaryKey('plant_trait_id', 'option_text')
-    plant_trait = models.ForeignKey(PlantTrait, models.DO_NOTHING, related_name='text_value_options')
+class TraitTextValueOption(models.Model):
+    pk = models.CompositePrimaryKey('trait_id', 'option_text')
+    trait = models.ForeignKey(Trait, models.DO_NOTHING)
     option_text = models.ForeignKey(Text, models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
@@ -134,35 +110,29 @@ class PlantTraitTextValueOption(models.Model):
 
     class Meta:
         managed = False
-        db_table = '"catalog"."plant_trait_text_value_options"'
+        db_table = '"catalog"."trait_text_value_options"'
 
 
-class PlantValue(models.Model):
-    plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='values')
-    trait = models.ForeignKey(PlantTrait, models.DO_NOTHING)
+class TraitValue(models.Model):
+    content = models.ForeignKey(Content, models.DO_NOTHING, related_name='trait_value')
+    plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='trait_values')
+    trait = models.ForeignKey(Trait, models.DO_NOTHING)
     value = models.CharField()
-    content_status = models.CharField(db_default='proposed', db_comment='[proposed, accepted, rejected]')
-    content_author = models.ForeignKey(User, models.DO_NOTHING)
-    content_author_comment = models.TextField(blank=True, null=True)
-    source = models.ForeignKey(Source, models.DO_NOTHING)
-    endorsements = models.IntegerField(db_default=0)
-    created_at = models.DateTimeField(db_default=Now())
-    accepted_at = models.DateTimeField(blank=True, null=True)
-    rejected_at = models.DateTimeField(blank=True, null=True)
 
-    objects = PlantValueQuerySet().as_manager()
+    texts = models.ManyToManyField(Text, through='catalog.TraitValueText')
+
+    objects = TraitValueQuerySet().as_manager()
 
     class Meta:
         managed = False
-        db_table = '"catalog"."plant_values"'
-        unique_together = (('plant', 'trait', 'value', 'content_status', 'rejected_at'),)
+        db_table = '"catalog"."trait_values"'
 
 
-class PlantValueText(models.Model):
-    pk = models.CompositePrimaryKey('plant_value', 'text')
-    plant_value = models.ForeignKey(PlantValue, models.DO_NOTHING, related_name='plant_value_texts')
+class TraitValueText(models.Model):
+    pk = models.CompositePrimaryKey('trait_value', 'text')
+    trait_value = models.ForeignKey(TraitValue, models.DO_NOTHING)
     text = models.ForeignKey(Text, models.DO_NOTHING)
 
     class Meta:
         managed = False
-        db_table = '"catalog"."plant_values_texts"' # TODO: transformar relação em M2M
+        db_table = '"catalog"."trait_values_texts"'

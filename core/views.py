@@ -157,7 +157,7 @@ class UserTokenView(APIView):
 
         return Response(content, status=status.HTTP_200_OK)
 
-    
+
 class ContentEndorsementView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -183,30 +183,20 @@ class ContentEndorsementView(APIView):
     
     def delete(self, request, endorsement_id):
         try:
-            endorsement = ContentEndorsement.objects.get(id=endorsement_id)
+            endorsement = ContentEndorsement.objects.denormalized().get(id=endorsement_id)
         except ContentEndorsement.DoesNotExist:
-            return Response({'msg': 'Aprovação não existe.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'msg': 'Não há aprovação cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if endorsement.endorser.id != request.user.id:
+            return Response({'msg': 'Você não tem autorização para remover essa aprovação.'}, status=status.HTTP_401_UNAUTHORIZED)
 
         if endorsement.deleted_at:
             return Response({'msg': 'Aprovação já removida.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        content_type = endorsement.content_type
-        try:
-            if content_type == 'plant_value':
-                content = PlantValue.objects.get(id=endorsement.plant_value_id)
-            elif content_type == 'plant_popular_name':
-                content = PlantPopularName.objects.get(id=endorsement.plant_popular_name_id)
-            elif content_type == 'plant_scientific_name':
-                content = PlantScientificName.objects.get(id=endorsement.plant_scientific_name_id)
-            elif content_type == 'plant_natural_occurrence_region':
-                content = PlantNaturalOccurrenceRegion.objects.get(id=endorsement.plant_natural_occurrence_region_id)
-        except ObjectDoesNotExist:
-            return Response({'msg': 'Conteúdo inexistente.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        content.endorsements -= 1
         endorsement.deleted_at = Now()
+        endorsement.content.endorsements -= 1
+        endorsement.content.save()
         endorsement.save()
-        content.save()
 
         content = {
             'msg': 'Aprovação removida com sucesso.'
@@ -216,15 +206,12 @@ class ContentEndorsementView(APIView):
     
 
 class ContentEndorsementListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
-        param_serializer = ContentEndorsementParamsSerializer(data=self.request.query_params)
+        filters = ContentEndorsementParamsSerializer(self.request.query_params).data
 
-        if not param_serializer.is_valid():
-            return Response(param_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        return ContentEndorsement.objects.active().filter(**param_serializer.data)
+        return ContentEndorsement.objects.active().filter(**filters)
 
     def get(self, request):
         endorsements = self.get_queryset().denormalized()
@@ -236,6 +223,7 @@ class ContentEndorsementListView(APIView):
 class UserContentEndorsementListView(ContentEndorsementListView):
     def get(self, request):
         endorsements = self.get_queryset().filter(endorser_id=request.user.id)
+
         serializer = UserContentEndorsementSerializer(endorsements, many=True)
     
         return Response(serializer.data, status=status.HTTP_200_OK)

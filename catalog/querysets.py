@@ -2,118 +2,152 @@ from django.apps import apps
 from django.db.models import QuerySet, Prefetch
 
 class PlantQuerySet(QuerySet):
-  def with_popular_names(self, custom_filters: dict):
-    filters = {'content_status__in': ['accepted']}
-    filters.update(custom_filters)
+    def denormalized(self):
+        return self.select_related('content')
 
-    return self.prefetch_related(
-        Prefetch(
-            'popular_names',
-            queryset=apps.get_model('catalog', 'PlantPopularName').objects.filter(**filters)
+    def with_popular_names(self, custom_filters: dict):
+        filters = {'content__status__in': ['accepted']}
+        filters.update(custom_filters)
+
+        return self.prefetch_related(
+            Prefetch(
+                'popular_names',
+                queryset=apps.get_model('catalog', 'PopularName').objects.filter(**filters)
+            ),
         )
-    )
   
-  def with_scientific_names(self, custom_filters: dict):
-    filters = {'content_status__in': ['accepted']}
-    filters.update(custom_filters)
-
-    return self.prefetch_related(
-        Prefetch(
-            'scientific_names',
-            queryset=apps.get_model('catalog', 'PlantScientificName').objects.filter(**filters)
+    def with_taxa(self, custom_filters: dict):
+        filters = {'content__status__in': ['accepted']}
+        filters.update(custom_filters)
+        
+        return self.prefetch_related(
+            Prefetch(
+                'taxa',
+                queryset=apps.get_model('catalog', 'Taxon').objects.filter(**filters)
+            )
         )
-    )
   
-  def with_trait_values(self, custom_filters: dict):
-    filters = {'content_status__in': ['accepted']}
-    filters.update(custom_filters)
-    
-    return self.prefetch_related(
-        Prefetch(
-            'values',
-            queryset=apps.get_model('catalog', 'PlantValue').objects.denormalized().filter(**filters)
+    def with_trait_values(self, custom_filters: dict):
+        filters = {'content__status__in': ['accepted']}
+        filters.update(custom_filters)
+        
+        return self.prefetch_related(
+            Prefetch(
+                'trait_values',
+                queryset=apps.get_model('catalog', 'TraitValue').objects.select_related(
+                    'trait',
+                    'trait__name_text',
+                ).prefetch_related(
+                    'texts',
+                ).filter(**filters)
+            )
         )
-    )
   
-  def with_natural_occurrence_regions(self, custom_filters: dict):
-    filters = {'content_status__in': ['accepted']}
-    filters.update(custom_filters)
-    
-    return self.prefetch_related(
-        Prefetch(
-            'natural_occurrence_regions',
-            queryset=apps.get_model('catalog', 'PlantNaturalOccurrenceRegion').objects.denormalized().filter(**filters)
+    def with_natural_occurrence_regions(self, custom_filters: dict):
+        filters = {'content__status__in': ['accepted']}
+        filters.update(custom_filters)
+        
+        return self.prefetch_related(
+            Prefetch(
+                'natural_occurrence_regions',
+                queryset=apps.get_model('catalog', 'NaturalOccurrenceRegion').objects.filter(**filters)
+            )
         )
-    )
   
-class PlantPopularNameQuerySet(QuerySet):
-  def denormalized(self):
-    return self.select_related(
-      'content_author',
-      'source',
-    )
-  
-class PlantScientificNameQuerySet(QuerySet):
-  def denormalized(self):
-    return self.select_related(
-      'content_author',
-      'source',
-    )
+    def with_invasion_risk_regions(self, custom_filters: dict):
+        filters = {'content__status__in': ['accepted']}
+        filters.update(custom_filters)
+        
+        return self.prefetch_related(
+            Prefetch(
+                'invasion_risk_regions',
+                queryset=apps.get_model('catalog', 'InvasionRiskRegion').objects.filter(**filters)
+            )
+        )
 
-class PlantTraitQuerySet(QuerySet):
-  def denormalized(self):
-    return self.select_related(
-        'name_text',
-        'section_text',
-    ).prefetch_related(
-        'text_value_options',
-        'text_value_options__option_text'
-    )
+class PopularNameQuerySet(QuerySet):
+    def denormalized(self):
+        return self.select_related(
+            'content',
+            'content__proposer',
+            'content__source',
+        )
 
-class PlantValueQuerySet(QuerySet):
-  def denormalized(self):
-    return self.select_related(
-        'content_author',
-        'source',
-        'trait',
-        'trait__name_text',
-        'trait__section_text',
-    ).prefetch_related(
-        'plant_value_texts',
-        'plant_value_texts__text',
-        'trait__text_value_options',
-        'trait__text_value_options__option_text',
-    )
+class TaxonQuerySet(QuerySet):
+    def denormalized(self):
+        return self.select_related(
+            'content',
+            'content__proposer',
+            'content__source',
+        )
 
-class PlantNaturalOccurrenceRegionQuerySet(QuerySet):
-  def denormalized(self):
-    return self.select_related(
-      'country',
-      'country__name_text',
-      'state',
-      'biome',
-      'vegetation_type',
-      'content_author',
-      'source',
-    ).only(
-      'plant_id',
-      'country__name_text',
-      'state__name',
-      'state__code',
-      'biome__name',
-      'vegetation_type__name',
-      'content_status',
-      'content_author__id',
-      'content_author__email',
-      'content_author__first_name',
-      'content_author__last_name',
-      'source__id',
-      'source__type',
-      'source__year',
-      'source__publication_title',
-      'source__publication_authors',
-      'source__publisher',
-      'source__url',
-      'source__description',
-      'created_at',
-    )
+class TraitQuerySet(QuerySet):
+    def denormalized(self):
+        return self.select_related(
+            'name_text',
+            'section_text',
+        ).prefetch_related(
+            'text_value_options',
+        )
+
+class TraitValueQuerySet(QuerySet):
+    def denormalized(self):
+        return self.select_related(
+            'content',
+            'content__proposer',
+            'content__source',
+            'trait',
+            'trait__name_text',
+            'trait__section_text',
+        ).prefetch_related(
+            'texts',
+            'trait__text_value_options',
+        )
+
+class NaturalOccurrenceRegionQuerySet(QuerySet):
+    def denormalized(self):
+        return self.select_related(
+            'content',
+            'content__proposer',
+            'content__source',
+            'country',
+            'country__name_text',
+            'state',
+            'biome',
+            'vegetation_type',
+        ).only(
+            'plant_id',
+            'country__name_text',
+            'state__name',
+            'state__code',
+            'biome__name',
+            'vegetation_type__name',
+            'content__status',
+            'content__proposer__id',
+            'content__proposer__email',
+            'content__proposer__first_name',
+            'content__proposer__last_name',
+            'content__source__id',
+            'content__source__type',
+            'content__source__year',
+            'content__source__title',
+            'content__source__authors',
+            'content__source__publisher',
+            'content__source__url',
+            'content__source__description',
+            'content__proposed_at',
+            'content__accepted_at',
+            'content__rejected_at',
+        )
+
+class InvasionRiskRegionQuerySet(QuerySet):
+    def denormalized(self):
+        return self.select_related(
+            'content',
+            'content__proposer',
+            'content__source',
+            'country',
+            'country__name_text',
+            'state',
+            'biome',
+        )

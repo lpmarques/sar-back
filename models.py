@@ -41,10 +41,12 @@ class ClimateNormals(models.Model):
 
 
 class ContentEndorsements(models.Model):
-    plant_value_id = models.IntegerField(blank=True, null=True)
-    plant_popular_name_id = models.IntegerField(blank=True, null=True)
-    plant_scientific_name_id = models.IntegerField(blank=True, null=True)
-    content_type = models.CharField(db_comment='[plant_values, plant_popular_name, plant_scientific_name]')
+    trait_value_id = models.IntegerField(blank=True, null=True)
+    popular_name_id = models.IntegerField(blank=True, null=True)
+    scientific_name_id = models.IntegerField(blank=True, null=True)
+    natural_occurrence_region_id = models.IntegerField(blank=True, null=True)
+    invasion_risk_region_id = models.IntegerField(blank=True, null=True)
+    content_type = models.CharField(db_comment='[trait_value, popular_name, scientific_name, natural_occurrence_region, invasion_risk_region]')
     endorser = models.ForeignKey('Users', models.DO_NOTHING)
     created_at = models.DateTimeField(blank=True, null=True)
     deleted_at = models.DateTimeField(blank=True, null=True)
@@ -52,7 +54,7 @@ class ContentEndorsements(models.Model):
     class Meta:
         managed = False
         db_table = 'content_endorsements'
-        unique_together = (('plant_value_id', 'plant_popular_name_id', 'plant_scientific_name_id', 'endorser'),)
+        unique_together = (('trait_value_id', 'popular_name_id', 'scientific_name_id', 'endorser'),)
 
 
 class Countries(models.Model):
@@ -237,8 +239,8 @@ class Municipalities(models.Model):
         unique_together = (('name', 'state'),)
 
 
-class PlantInvasionRiskRegions(models.Model):
-    plant_scientific_name = models.CharField()
+class InvasionRiskRegions(models.Model):
+    scientific_name = models.CharField()
     plant = models.ForeignKey('Plants', models.DO_NOTHING, blank=True, null=True)
     country_id = models.IntegerField()
     state_id = models.IntegerField(blank=True, null=True)
@@ -252,11 +254,11 @@ class PlantInvasionRiskRegions(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'plant_invasion_risk_regions'
-        unique_together = (('plant_scientific_name', 'plant', 'country_id', 'state_id', 'biome_id'),)
+        db_table = 'invasion_risk_regions'
+        unique_together = (('scientific_name', 'plant', 'country_id', 'state_id', 'biome_id'),)
 
 
-class PlantNaturalDistributionRegions(models.Model):
+class NaturalDistributionRegions(models.Model):
     plant = models.ForeignKey('Plants', models.DO_NOTHING)
     country_id = models.IntegerField()
     state_id = models.IntegerField(blank=True, null=True)
@@ -271,11 +273,11 @@ class PlantNaturalDistributionRegions(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'plant_natural_distribution_regions'
+        db_table = 'natural_distribution_regions'
         unique_together = (('plant', 'country_id', 'state_id', 'biome_id', 'vegetation_type_id'),)
 
 
-class PlantPopularNames(models.Model):
+class PopularNames(models.Model):
     name = models.CharField()
     plant = models.ForeignKey('Plants', models.DO_NOTHING)
     content_status = models.CharField(blank=True, null=True, db_comment='[proposed, accepted, rejected]')
@@ -289,11 +291,11 @@ class PlantPopularNames(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'plant_popular_names'
+        db_table = 'popular_names'
         unique_together = (('plant', 'name', 'content_status', 'rejected_at'),)
 
 
-class PlantScientificNames(models.Model):
+class ScientificNames(models.Model):
     name = models.CharField(unique=True)
     plant = models.ForeignKey('Plants', models.DO_NOTHING)
     taxonomic_status = models.CharField(db_comment='[accepted, synonym]')
@@ -308,13 +310,13 @@ class PlantScientificNames(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'plant_scientific_names'
+        db_table = 'scientific_names'
         unique_together = (('plant', 'name', 'content_status', 'rejected_at'),)
 
 
 class PlantSiteFitting(models.Model):
-    pk = models.CompositePrimaryKey('plant_trait_id', 'site_trait_id')
-    plant_trait_id = models.IntegerField()
+    pk = models.CompositePrimaryKey('trait_id', 'site_trait_id')
+    trait_id = models.IntegerField()
     site_trait = models.ForeignKey('SiteTraits', models.DO_NOTHING)
     pre_transforms = models.TextField(blank=True, null=True)  # This field type is a guess.
     fitting_function = models.ForeignKey(Functions, models.DO_NOTHING)
@@ -329,9 +331,9 @@ class PlantSiteFitting(models.Model):
         db_table = 'plant_site_fitting'
 
 
-class PlantTraitTextValueOptions(models.Model):
-    pk = models.CompositePrimaryKey('plant_trait_id', 'option_text_id')
-    plant_trait = models.ForeignKey('PlantTraits', models.DO_NOTHING)
+class TraitTextValueOptions(models.Model):
+    pk = models.CompositePrimaryKey('trait_id', 'option_text_id')
+    trait = models.ForeignKey('Traits', models.DO_NOTHING)
     option_text_id = models.IntegerField()
     created_at = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(blank=True, null=True)
@@ -339,10 +341,10 @@ class PlantTraitTextValueOptions(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'plant_trait_text_value_options'
+        db_table = 'trait_text_value_options'
 
 
-class PlantTraits(models.Model):
+class Traits(models.Model):
     name = models.CharField()
     name_text_id = models.IntegerField()
     section = models.CharField(blank=True, null=True)
@@ -358,23 +360,23 @@ class PlantTraits(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'plant_traits'
+        db_table = 'traits'
         unique_together = (('name', 'section'),)
 
 
-class PlantValueTexts(models.Model):
-    pk = models.CompositePrimaryKey('plant_value_id', 'text_id')
-    plant_value = models.ForeignKey('PlantValues', models.DO_NOTHING)
+class TraitValueTexts(models.Model):
+    pk = models.CompositePrimaryKey('trait_value_id', 'text_id')
+    trait_value = models.ForeignKey('TraitValues', models.DO_NOTHING)
     text_id = models.IntegerField()
 
     class Meta:
         managed = False
-        db_table = 'plant_value_texts'
+        db_table = 'trait_value_texts'
 
 
-class PlantValues(models.Model):
+class TraitValues(models.Model):
     plant = models.ForeignKey('Plants', models.DO_NOTHING)
-    trait = models.ForeignKey(PlantTraits, models.DO_NOTHING)
+    trait = models.ForeignKey(Traits, models.DO_NOTHING)
     value = models.CharField()
     content_status = models.CharField(blank=True, null=True, db_comment='[proposed, accepted, rejected]')
     content_author_id = models.IntegerField()
@@ -387,7 +389,7 @@ class PlantValues(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'plant_values'
+        db_table = 'trait_values'
         unique_together = (('plant', 'trait', 'value', 'content_status', 'rejected_at'),)
 
 
