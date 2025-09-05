@@ -60,9 +60,9 @@ class OwnUserView(APIView):
         user.last_name = serializer.data.get('last_name')
         user.occupation = serializer.data.get('occupation')
         user.company = serializer.data.get('company')
-        user.country_id = serializer.data.get('country_id')
-        user.state_id = serializer.data.get('state_id')
-        user.municipality_id = serializer.data.get('municipality_id')
+        user.country = serializer.data.get('country')
+        user.state = serializer.data.get('state')
+        user.municipality = serializer.data.get('municipality')
         user.save()
 
         content = {
@@ -88,9 +88,9 @@ class OwnUserView(APIView):
         user.last_name = serializer.data.get('last_name')
         user.occupation = serializer.data.get('occupation')
         user.company = serializer.data.get('company')
-        user.country_id = serializer.data.get('country_id')
-        user.state_id = serializer.data.get('state_id')
-        user.municipality_id = serializer.data.get('municipality_id')
+        user.country = serializer.data.get('country')
+        user.state = serializer.data.get('state')
+        user.municipality = serializer.data.get('municipality')
 
         user.save()
 

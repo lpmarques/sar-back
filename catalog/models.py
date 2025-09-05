@@ -1,7 +1,7 @@
 from django.db import models
 from django.db.models.functions import Now
 from catalog.querysets import InvasionRiskRegionQuerySet, NaturalOccurrenceRegionQuerySet, PlantQuerySet, PopularNameQuerySet, TaxonQuerySet, TraitQuerySet, TraitValueQuerySet
-from core.models import Content, Source, User, Text
+from core.models import Content, Text
 from geography.models import Biome, Country, State, VegetationType
 
 class Plant(models.Model):
@@ -13,7 +13,7 @@ class Plant(models.Model):
     objects = PlantQuerySet().as_manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"catalog"."plants"'
 
 
@@ -28,7 +28,7 @@ class InvasionRiskRegion(models.Model):
     objects = InvasionRiskRegionQuerySet.as_manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"catalog"."invasion_risk_regions"'
 
 
@@ -43,11 +43,11 @@ class NaturalOccurrenceRegion(models.Model):
     objects = NaturalOccurrenceRegionQuerySet.as_manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"catalog"."natural_occurrence_regions"'
 
 
-class PopularName(models.Model): # TODO: remove plant_id FK and add join table for M2M rel. with plants table
+class PopularName(models.Model):
     content = models.ForeignKey(Content, models.DO_NOTHING)
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='popular_names')
     name = models.CharField()
@@ -55,7 +55,7 @@ class PopularName(models.Model): # TODO: remove plant_id FK and add join table f
     objects = PopularNameQuerySet().as_manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"catalog"."popular_names"'
 
 
@@ -72,7 +72,7 @@ class Taxon(models.Model):
     objects = TaxonQuerySet().as_manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"catalog"."taxa"'
 
 
@@ -95,13 +95,13 @@ class Trait(models.Model):
     objects = TraitQuerySet().as_manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"catalog"."traits"'
         unique_together = (('name', 'section'),)
 
 
 class TraitTextValueOption(models.Model):
-    pk = models.CompositePrimaryKey('trait_id', 'option_text')
+    pk = models.CompositePrimaryKey('trait', 'option_text')
     trait = models.ForeignKey(Trait, models.DO_NOTHING)
     option_text = models.ForeignKey(Text, models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
@@ -109,7 +109,7 @@ class TraitTextValueOption(models.Model):
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"catalog"."trait_text_value_options"'
 
 
@@ -124,7 +124,7 @@ class TraitValue(models.Model):
     objects = TraitValueQuerySet().as_manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"catalog"."trait_values"'
 
 
@@ -134,5 +134,5 @@ class TraitValueText(models.Model):
     text = models.ForeignKey(Text, models.DO_NOTHING)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"catalog"."trait_values_texts"'

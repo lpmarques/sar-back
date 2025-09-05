@@ -20,7 +20,7 @@ class Content(models.Model):
     rejected_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"core"."contents"'
 
 
@@ -33,7 +33,7 @@ class ContentEndorsement(models.Model):
     objects = ContentEndorsementQuerySet().as_manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"core"."content_endorsements"'
         unique_together = (('content', 'endorser', 'deleted_at'),)
 
@@ -55,7 +55,7 @@ class Source(models.Model):
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"core"."sources"'
         unique_together = (('title', 'year'),)
 
@@ -68,7 +68,7 @@ class Text(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"core"."texts"'
 
 
@@ -80,9 +80,9 @@ class User(EmailAbstractUser):
     role = models.CharField(blank=True, null=True, db_default="regular")
     occupation = models.CharField()
     company = models.CharField(blank=True, null=True)
-    country = models.ForeignKey('geography.Country', on_delete=models.DO_NOTHING, blank=True, null=True)
-    state = models.ForeignKey('geography.State', on_delete=models.DO_NOTHING, blank=True, null=True)
-    municipality = models.ForeignKey('geography.Municipality', on_delete=models.DO_NOTHING, blank=True, null=True)
+    country = models.CharField(blank=True, null=True)
+    state = models.CharField(blank=True, null=True)
+    municipality = models.CharField(blank=True, null=True)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
@@ -110,5 +110,5 @@ class User(EmailAbstractUser):
         self.save()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"core"."users"'

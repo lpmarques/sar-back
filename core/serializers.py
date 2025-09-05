@@ -47,9 +47,9 @@ class UserPreviewSerializer(ModelSerializer):
         ]
 
 class UserSerializer(UserPreviewSerializer):
-    country = SlugRelatedField(read_only=True, slug_field='name_text__pt_br')
-    state = SlugRelatedField(read_only=True, slug_field='code')
-    municipality = SlugRelatedField(read_only=True, slug_field='name')
+    country = CharField(read_only=True)
+    state = CharField(read_only=True)
+    municipality = CharField(read_only=True)
     
     class Meta(UserPreviewSerializer.Meta):
         model = User
@@ -68,9 +68,9 @@ class UserCreationSerializer(Serializer):
     last_name = CharField(max_length=50)
     occupation = CharField(max_length=30)
     company = CharField(max_length=30, required=False, allow_blank=True)
-    country_id = IntegerField(required=False, allow_null=True)
-    state_id = IntegerField(required=False, allow_null=True)
-    municipality_id = IntegerField(required=False, allow_null=True)
+    country = CharField(required=False, allow_null=True)
+    state = CharField(required=False, allow_null=True)
+    municipality = CharField(required=False, allow_null=True)
 
 class UserUpdateSerializer(Serializer):
     email = CharField(max_length=255)
@@ -78,9 +78,9 @@ class UserUpdateSerializer(Serializer):
     last_name = CharField(max_length=50)
     occupation = CharField(max_length=30)
     company = CharField(max_length=30, required=False, allow_blank=True)
-    country_id = IntegerField(required=False, allow_null=True)
-    state_id = IntegerField(required=False, allow_null=True)
-    municipality_id = IntegerField(required=False, allow_null=True)
+    country = CharField(required=False, allow_null=True)
+    state = CharField(required=False, allow_null=True)
+    municipality = CharField(required=False, allow_null=True)
 
 class UserTokenCreationSerializer(Serializer):
     email = EmailField(max_length=255)

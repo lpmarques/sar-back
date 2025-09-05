@@ -92,7 +92,7 @@ DATABASES = {
         'HOST': 'localhost',
         'PORT': '5432',
         'OPTIONS': {
-            'options': '-c search_path=core,catalog,geography,agroforestry'
+            'options': '-c search_path=public,core,catalog,geography,agroforestry'
         },
     }
 }
