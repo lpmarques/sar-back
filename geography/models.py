@@ -12,7 +12,7 @@ class Biome(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"geography"."biomes"'
         unique_together = (('name', 'country'),)
 
@@ -31,7 +31,7 @@ class ClimateNormal(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"geography"."climate_normals"'
 
 
@@ -43,7 +43,7 @@ class Country(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"geography"."countries"'
 
 
@@ -60,7 +60,7 @@ class MonthlyDroughtArea(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"geography"."monthly_drought_areas"'
 
 
@@ -74,7 +74,7 @@ class Municipality(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"geography"."municipalities"'
         unique_together = (('name', 'state'),)
 
@@ -87,7 +87,7 @@ class SoilAcidityLevel(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"geography"."soil_acidity_levels"'
 
 
@@ -101,7 +101,7 @@ class SoilPhMap(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"geography"."soil_ph_maps"'
 
 
@@ -115,7 +115,7 @@ class SoilTextureArea(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"geography"."soil_texture_areas"'
 
 
@@ -129,7 +129,7 @@ class State(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"geography"."states"'
         unique_together = (('name', 'country'),)
 
@@ -145,7 +145,7 @@ class VegetationArea(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"geography"."vegetation_areas"'
 
 
@@ -156,6 +156,6 @@ class VegetationType(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:
-        managed = False
+        managed = True
         db_table = '"geography"."vegetation_types"'
         unique_together = (('name', 'country'),)

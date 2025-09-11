@@ -93,12 +93,12 @@ class TraitValueView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            serializer.save()
+            trait_value = serializer.save()
         except Exception as err:
             return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         content = {
-            'content_id': serializer.data.get('content_id'),
+            'content_id': trait_value.content_id,
             'msg': 'Versão cadastrada com sucesso.'
         }
     
