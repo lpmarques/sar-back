@@ -18,12 +18,18 @@ class Plant(models.Model):
 
 
 class InvasionRiskRegion(models.Model):
+    class EICAT(models.TextChoices):
+        MO = "Moderate", "moderate"
+        MR = "Major", "major"
+        MV = "Massive", "massive"
+
     content = models.ForeignKey(Content, models.DO_NOTHING)
     taxon_name = models.CharField()
     plant = models.ForeignKey(Plant, models.DO_NOTHING, blank=True, null=True, related_name='invasion_risk_regions')
     country = models.ForeignKey(Country, models.DO_NOTHING)
     state = models.ForeignKey(State, models.DO_NOTHING, blank=True, null=True)
     biome = models.ForeignKey(Biome, models.DO_NOTHING, blank=True, null=True)
+    eicat_category = models.CharField(blank=True, null=True, choices=EICAT.choices)
 
     objects = InvasionRiskRegionQuerySet.as_manager()
 
@@ -82,6 +88,7 @@ class Trait(models.Model):
     section = models.CharField(blank=True, null=True)
     section_text = models.ForeignKey(Text, models.DO_NOTHING, blank=True, null=True, related_name='section_text_traits')
     data_type = models.CharField()
+    schema = models.JSONField()
     is_nullable = models.BooleanField()
     is_site_specific = models.BooleanField()
     numeric_value_min = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
@@ -97,7 +104,7 @@ class Trait(models.Model):
     class Meta:
         managed = True
         db_table = '"catalog"."traits"'
-        unique_together = (('name', 'section'),)
+        unique_together = (('name_text', 'section_text'),)
 
 
 class TraitTextValueOption(models.Model):
@@ -105,7 +112,6 @@ class TraitTextValueOption(models.Model):
     trait = models.ForeignKey(Trait, models.DO_NOTHING)
     option_text = models.ForeignKey(Text, models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
-    updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:

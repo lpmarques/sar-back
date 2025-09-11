@@ -1,39 +1,183 @@
-from django.core.exceptions import ObjectDoesNotExist
-from django.core.validators import URLValidator
-from rest_framework.serializers import ModelSerializer, Serializer, EmailField, CharField, IntegerField, SlugRelatedField, ValidationError
-from core.models import Content, ContentEndorsement, Source, User
-import re
+from django.db.models import Prefetch, Q
+from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, IntegerField, JSONField, ModelSerializer, Serializer, ValidationError
+from core.models import Content, ContentEndorsement, Source, SourceField, SourceFieldValue, SourceType, User
+import json
+from jsonschema import validate, FormatChecker
+
+class SourceFieldSerializer(ModelSerializer):
+    name = CharField(read_only=True, source='name_text.pt_br')
+    description = CharField(read_only=True, source='description_text.pt_br')
+    schema = JSONField(read_only=True)
+
+    class Meta:
+        model = SourceField
+        fields = (
+            'id',
+            'name',
+            'description',
+            'schema',
+            'is_nullable',
+            'position',
+        )
+
+class SourceFieldValueSerializer(ModelSerializer):
+    # read
+    field = CharField(read_only=True, source='field.name_text.pt_br')
+    schema = JSONField(read_only=True, source='field.schema')
+    position = IntegerField(read_only=True, source='field.position')
+    # write
+    field_id = IntegerField(write_only=True)
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        
+        if obj.field.schema['type'] != "string":
+            data['value'] = json.loads(obj.value)
+
+        return data
+
+    def to_internal_value(self, data):
+        value = data.get('value')
+        field_id = data.get('field_id')
+
+        try:
+            field = SourceField.objects.denormalized().active().get(id=field_id)
+        except SourceField.DoesNotExist:
+            raise ValidationError(f"Não há campo cadastrado com esse id: {field_id}")
+
+        try:
+            validate(value, field.schema, format_checker=FormatChecker())
+        except Exception as e:
+            raise ValidationError(f"Valor inválido para o campo '{field.name_text.pt_br}' (field_id: {field_id})': {e}")
+
+        if field.schema['type'] != "string":
+            data['value'] = json.dumps(value)
+
+        return super().to_internal_value(data)
+
+    class Meta:
+        model = SourceFieldValue
+        fields = (
+            'field',
+            'field_id',
+            'value',
+            'schema',
+            'position',
+        )
 
 class SourceSerializer(ModelSerializer):
-    content_author_id = IntegerField(write_only=True, allow_null=False)
+    # read
+    id = IntegerField(read_only=True)
+    type = CharField(read_only=True, source='type.name_text.pt_br')
+    is_static = BooleanField(read_only=True, source='type.is_static')
+    created_at = DateTimeField(read_only=True)
+    deleted_at = DateTimeField(read_only=True)
+    # both
+    field_values = SourceFieldValueSerializer(many=True)
+    creator_id = IntegerField()
+    # write
+    type_id = IntegerField(write_only=True)
+    creator_notes = CharField(write_only=True, required=False, max_length=300, allow_null=True, allow_blank=True)
 
-    def validate_url(self, value):
-        try:
-            URLValidator(value)
-        except ValidationError as e:
-            raise ValidationError('URL inválida.')
+    def validate_required_fields(self, data, type_fields):
+        required_fields = type_fields.filter(is_nullable=False)
+        passed_field_ids = [item['field_id'] for item in data['field_values']]
+        missing_req_fields = []
+        for req in required_fields:
+            if req.id not in passed_field_ids:
+                missing_req_fields.append({
+                    "field_id": req.id,
+                    "name": req.name_text.pt_br
+                })
+
+        if missing_req_fields:
+            raise ValidationError(f"Há campos obrigatórios faltando: {missing_req_fields}")
+
+    def validate_uniqueness(self, data, type, type_fields):
+        type_sources = Source.objects.active().filter(
+            Q(type_id=type.id) | Q(type__parent_id=type.id)
+        ).select_related(
+            'type',
+        ).prefetch_related(
+            Prefetch(
+                'field_values',
+                queryset=SourceFieldValue.objects.active().select_related(
+                    'field',
+                ).order_by(
+                    'field__position',
+                )
+            ),
+        ).order_by('-created_at')
         
-        return value
-    
-    def validate_publication_authors(self, value):
-        for author in value:
-            if re.match(r'/^(([A-Z][a-z]+ ?(d[eao][sl]? )?){2,})|((d[eao][sl]? )?[A-Z][a-z]+,? ([A-Z]\. ?)+)$/', author):
-                raise ValidationError(f'Autor inválido: {author}. Formatos aceitos: "Nome Sobrenome" ou "Sobrenome N."')
-        
-        return value
+        field_positions = {field.id: field.position for field in type_fields}
+        data['field_values'].sort(key=lambda item: field_positions[item['field_id']])
+
+        for source in type_sources:
+            source_field_values = [{'field_id': item.field_id, 'value': item.value} for item in source.field_values.all()]
+            if data['field_values'] == source_field_values and (type.is_static or source.creator_id == data['creator_id']):
+                raise ValidationError(f"Já existe outra fonte cadastrada com os mesmos dados: [{source.id}].")
+
+    def validate(self, data):
+        type = SourceType.objects.active().get(id=data['type_id'])
+        fields = SourceField.objects.denormalized().active()
+
+        type_fields = fields.filter(source_type_id=type.id)
+        if type.parent_id:
+            type_fields |= fields.filter(source_type_id=type.parent_id)
+
+        self.validate_required_fields(data, type_fields)
+        self.validate_uniqueness(data, type, type_fields)
+
+        return data
+
+    def create(self, validated_data):
+        source = Source.objects.create(
+            type_id = validated_data['type_id'],
+            creator_id = validated_data['creator_id'],
+            creator_notes = validated_data.get('creator_notes'),
+        )
+
+        SourceFieldValue.objects.bulk_create([
+            SourceFieldValue(
+                source_id = source.id,
+                field_id = item['field_id'],
+                value = item['value'],
+            ) for item in validated_data['field_values']
+        ])
+
+        return source
 
     class Meta:
         model = Source
         fields = (
             'id',
             'type',
-            'year',
-            'title',
-            'authors',
-            'publisher',
-            'url',
-            'description',
-            'content_author_id',
+            'is_static',
+            'field_values',
+            'type_id',
+            'creator_id',
+            'creator_notes',
+            'created_at',
+            'deleted_at',
+        )
+
+class SourceTypeSerializer(ModelSerializer):
+    id = IntegerField(read_only=True)
+    name = CharField(read_only=True, source='name_text.pt_br')
+    is_static = BooleanField(read_only=True)
+    level = CharField(read_only=True, source='get_level_display')
+    parent_id = IntegerField(read_only=True)
+    fields = SourceFieldSerializer(many=True, read_only=True, source='field_set')
+
+    class Meta:
+        model = SourceType
+        fields = (
+            'id',
+            'name',
+            'level',
+            'parent_id',
+            'is_static',
+            'fields',
         )
 
 class UserPreviewSerializer(ModelSerializer):

@@ -153,7 +153,7 @@ class UserTokenView(APIView):
         for token in tokens:
             token.delete()
 
-        content = {'success': ('Logout realizado com sucesso.')}
+        content = {'msg': ('Logout realizado com sucesso.')}
 
         return Response(content, status=status.HTTP_200_OK)
 
@@ -170,12 +170,12 @@ class ContentEndorsementView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            serializer.save()
+            endorsement = serializer.save()
         except Exception as err:
             return Response({'msg': err.args[0]}, status=status.HTTP_400_BAD_REQUEST)
 
         content = {
-            'endorsement_id': serializer.data.get('id'),
+            'endorsement_id': endorsement.id,
             'msg': 'Conteúdo aprovado com sucesso.'
         }
     
@@ -230,23 +230,38 @@ class UserContentEndorsementListView(ContentEndorsementListView):
 
 
 class SourceView(APIView):
-    permission_classes = [IsAuthenticated]
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [AllowAny()]
+
+        return [IsAuthenticated()]
+
+    def get(self, request, source_id):
+        try:
+            source = Source.objects.denormalized().get(id=source_id)
+        except Source.DoesNotExist:
+            return Response({'msg': 'Não há fonte cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = SourceSerializer(source)
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
         data = request.data
-        data.update({'content_author_id': request.user.id})
+        data.update({'creator_id': request.user.id})
+        # data.update({'creator_id': 4})
         serializer = SourceSerializer(data=data)
 
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            serializer.save()
+            source = serializer.save()
         except Exception as err:
             return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         content = {
-            'source_id': serializer.data.get('id'),
+            'source_id': source.id,
             'msg': 'Fonte cadastrada com sucesso.'
         }
     
@@ -257,8 +272,25 @@ class SourceListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        sources = Source.objects.all()
+        sources = Source.objects.denormalized().active()
         serializer = SourceSerializer(sources, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+
+class SourceTypeListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, type_id=None):
+        filters = {
+            "level": SourceType.Level.SUBTYPE,
+            "parent_id": type_id
+        } if type_id else {
+            "level": SourceType.Level.TYPE
+        }
+
+        source_types = SourceType.objects.denormalized().active().filter(**filters)
+        serializer = SourceTypeSerializer(source_types, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
     

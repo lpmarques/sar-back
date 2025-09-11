@@ -13,32 +13,6 @@ pg_to_json_type = {
     'boolean': 'boolean'
 }
 
-class WritableSerializerMethodField(SerializerMethodField):
-    def __init__(self, **kwargs):
-        self.setter_method_name = kwargs.pop('setter_method_name', None)
-
-        super().__init__(**kwargs)
-
-        self.read_only = False
-
-    def bind(self, field_name, parent):
-        retval = super().bind(field_name, parent)
-        if not self.setter_method_name:
-            self.setter_method_name = f'set_{field_name}'
-
-        return retval
-
-    def get_default(self):
-        default = super().get_default()
-
-        return {
-            self.field_name: default
-        }
-
-    def to_internal_value(self, value):
-        method = getattr(self.parent, self.setter_method_name)
-        return {self.field_name: method(value)}
-
 class TraitSerializer(ModelSerializer):
     id = IntegerField(read_only=True)
     slug = CharField(read_only=True, source='name')
@@ -90,7 +64,7 @@ class TraitValueSerializer(ModelSerializer):
     content_proposer_id = IntegerField(write_only=True, required=True)
     content_proposer_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     # both
-    value = WritableSerializerMethodField(setter_method_name='set_value_field')
+    value = SerializerMethodField() # write via to_internal_value
     trait_id = IntegerField(required=True)
     plant_id = IntegerField(required=True)
 
@@ -119,65 +93,69 @@ class TraitValueSerializer(ModelSerializer):
             return [True, False]
 
         return []
+    
+    def to_internal_value(self, data):
+        value = data.get('value')
+        if not value:
+            raise ValidationError("O campo 'value' é obrigatório.")
+        try:
+            trait = Trait.objects.denormalized().get(id=data.get('trait_id'))
+        except Trait.DoesNotExist:
+            raise ValidationError("Não há traço cadastrado com esse id.")
+        
+        self.loaded_value = value
+        self.trait = trait
 
-    def set_value_field(self, value): # called before validation
-        return value
+        if trait.data_type == "varchar[]":
+            self.texts = Text.objects.filter(**{'pt_br__in': value})
+            data['value'] = json.dumps(sorted([text.en for text in self.texts]))
+        if trait.data_type == "varchar":
+            self.texts = Text.objects.filter(**{'pt_br': value})
+            data['value'] = self.texts[0].en
+        else:
+            data['value'] = json.dumps(value)
 
-    def value_to_string_value(self, value): # called before writing
-        if self.trait.data_type in ['int4range', 'numrange']:
-            return json.dumps([value.get('minimum'), value.get('maximum')])
-        if self.trait.data_type in ["varchar", "varchar[]"]:
-            values = value if self.trait.data_type == "varchar[]" else [value]
-            texts = Text.objects.filter(**{'pt_br__in': values})
-            return json.dumps(sorted([text.en for text in texts]))
-
-        return json.dumps(value)
+        return data
 
     def validate(self, data):
-        value = data.get('value')
-
-        try:
-            self.trait = Trait.objects.denormalized().get(id=data.get('trait_id'))
-        except Trait.DoesNotExist:
-            raise ValidationError("Traço inexistente.")
+        trait = self.trait
+        value = self.loaded_value
 
         matching_values = TraitValue.objects.filter(
             plant_id=data['plant_id'],
-            trait_id=self.trait.id,
+            trait_id=data['trait_id'],
             content__status__in=["accepted", "proposed"],
-            value=self.value_to_string_value(value),
+            value=data['value'],
         )
         if matching_values:
             raise ValidationError("Valor igual ao valor aceito ou a outra proposta já cadastrada.")
 
-        if self.trait.data_type in ["varchar", "varchar[]"]:
-            values = value if self.trait.data_type == "varchar[]" else [value]
+        if trait.data_type in ["varchar", "varchar[]"]:
+            values = value if trait.data_type == "varchar[]" else [value]
             if len(values) == 0:
                 raise ValidationError("Valor não pode ser vazio.")
-            options = TraitSerializer(self.trait).data.get('text_value_options')
+            options = TraitSerializer(trait).data.get('text_value_options')
             for item in values:
                 if item not in options:
                     raise ValidationError(
                         f"Valor '{item}' inválido para o traço. Valores permitidos: {json.dumps(options)}"
                     )
-        if self.trait.data_type == "number":
-            if value >= self.trait.numeric_value_min and value <= self.trait.numeric_value_max:
+        if trait.data_type == "number":
+            if value >= trait.numeric_value_min and value <= trait.numeric_value_max:
                 raise ValidationError(
-                    f"Valor '{value}' fora do intervalo permitido para o traço: de {self.trait.numeric_value_min} até {self.trait.numeric_value_max}"
+                    f"Valor '{value}' fora do intervalo permitido para o traço: de {trait.numeric_value_min} até {trait.numeric_value_max}"
                 )
-        if self.trait.data_type == "range":
-            if (value.get('minimum') >= value.get('maximum')):
+        if trait.data_type == "range":
+            if (value[0] >= value[1]):
                 raise ValidationError("O valor mínimo do intervalo não pode ser inferior ao valor máximo")
-            if (value.get('minimum') < self.trait.numericValueMin):
-                raise ValidationError(f"O valor mínimo está fora do intervalo permitido para o traço: de {self.trait.numeric_value_min} até {self.trait.numeric_value_max}")
-            if (value.get('maximum') > self.trait.numericValueMax):
-                raise ValidationError(f"O valor máximo está fora do intervalo permitido para o traço: de {self.trait.numeric_value_min} até {self.trait.numeric_value_max}")
+            if (value[0] < trait.numericValueMin):
+                raise ValidationError(f"O valor mínimo está fora do intervalo permitido para o traço: de {trait.numeric_value_min} até {trait.numeric_value_max}")
+            if (value[1] > trait.numericValueMax):
+                raise ValidationError(f"O valor máximo está fora do intervalo permitido para o traço: de {trait.numeric_value_min} até {trait.numeric_value_max}")
         
         return data
 
     def create(self, validated_data):
-        value = validated_data.get('value')
-
         content = Content.objects.create(
             status = 'proposed',
             source_id = validated_data.get('source_id'),
@@ -189,13 +167,11 @@ class TraitValueSerializer(ModelSerializer):
             content_id = content.id,
             plant_id = validated_data.get('plant_id'),
             trait_id = validated_data.get('trait_id'),
-            value = self.value_to_string_value(value),
+            value = validated_data.get('value'),
         )
 
         if self.trait.data_type in ["varchar", "varchar[]"]:
-            list = value if self.trait.data_type == "varchar[]" else [value]
-            texts = Text.objects.filter(**{'pt_br__in': list})
-            trait_value.texts.add(*texts)
+            trait_value.texts.add(*self.texts)
 
         return trait_value
 

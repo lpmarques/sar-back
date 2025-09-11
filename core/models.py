@@ -2,8 +2,7 @@ from authemail.models import EmailUserManager, EmailAbstractUser
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models.functions import Now
-from django.contrib.postgres.fields import ArrayField
-from core.querysets import ContentEndorsementQuerySet
+from core.querysets import ContentEndorsementQuerySet, SourceFieldQuerySet, SourceFieldValueQuerySet, SourceQuerySet, SourceTypeQuerySet
 
 class Content(models.Model):
     type = models.CharField(db_comment='[plant, popular_name, taxon, trait_value, natural_occurrence_region, invasion_risk_region]')
@@ -11,8 +10,8 @@ class Content(models.Model):
     proposer = models.ForeignKey('User', models.DO_NOTHING, related_name="proposed_contents")
     acceptor = models.ForeignKey('User', models.DO_NOTHING, blank=True, null=True, related_name="accepted_contents")
     rejector = models.ForeignKey('User', models.DO_NOTHING, blank=True, null=True, related_name="rejected_contents")
-    proposer_comment = models.CharField(blank=True, null=True)
-    rejector_comment = models.CharField(blank=True, null=True)
+    proposer_comment = models.CharField(max_length=300, blank=True, null=True)
+    rejector_comment = models.CharField(max_length=300, blank=True, null=True)
     source = models.ForeignKey('Source', models.DO_NOTHING, blank=True, null=True, related_name="contents")
     endorsements = models.IntegerField(db_default=0)
     proposed_at = models.DateTimeField(db_default=Now())
@@ -40,30 +39,75 @@ class ContentEndorsement(models.Model):
 
 class Source(models.Model):
     name = models.CharField(unique=True, blank=True, null=True)
-    type = models.CharField() # TODO: create source_types table with is_static and name_text_id fields
-    year = models.IntegerField(blank=True, null=True)
-    title = models.CharField()
-    authors = ArrayField(
-        models.CharField(), blank=True, null=True
-    )
-    publisher = models.CharField(blank=True, null=True)
-    url = models.CharField(blank=True, null=True)
-    description = models.CharField(blank=True, null=True)
-    content_author = models.ForeignKey('User', models.DO_NOTHING)
+    type = models.ForeignKey('SourceType', models.DO_NOTHING)
+    creator = models.ForeignKey('User', models.DO_NOTHING)
+    creator_notes = models.CharField(max_length=300, blank=True, null=True)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
+    objects = SourceQuerySet.as_manager()
+
     class Meta:
         managed = True
         db_table = '"core"."sources"'
-        unique_together = (('title', 'year'),)
+
+
+class SourceField(models.Model):
+    source_type = models.ForeignKey('SourceType', models.DO_NOTHING, related_name="field_set") # must be that name orelse serializer's default to_representation will mess things up
+    name_text = models.ForeignKey('Text', models.DO_NOTHING, related_name="name_text_fields")
+    description_text = models.ForeignKey('Text', models.DO_NOTHING, blank=True, null=True, related_name="description_text_fields")
+    schema = models.JSONField()
+    is_nullable = models.BooleanField(db_default=True)
+    position = models.IntegerField()
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
+    deleted_at = models.DateTimeField(blank=True, null=True)
+
+    objects = SourceFieldQuerySet().as_manager()
+
+    class Meta:
+        db_table = '"core"."source_fields"'
+        unique_together = (('source_type', 'name_text'),)
+
+
+class SourceFieldValue(models.Model):
+    source = models.ForeignKey(Source, models.DO_NOTHING, related_name="field_values")
+    field = models.ForeignKey(SourceField, models.DO_NOTHING)
+    value = models.CharField()
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
+    deleted_at = models.DateTimeField(blank=True, null=True)
+
+    objects = SourceFieldValueQuerySet.as_manager()
+
+    class Meta:
+        db_table = '"core"."source_field_values"'
+
+
+class SourceType(models.Model):
+    class Level(models.IntegerChoices):
+        TYPE = 1, "type"
+        SUBTYPE = 2, "subtype"
+
+    name_text = models.OneToOneField('Text', models.DO_NOTHING)
+    parent = models.ForeignKey('self', models.DO_NOTHING, blank=True, null=True, related_name="children")
+    level = models.IntegerField(choices=Level.choices)
+    is_static = models.BooleanField()
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
+    deleted_at = models.DateTimeField(blank=True, null=True)
+
+    objects = SourceTypeQuerySet().as_manager()
+
+    class Meta:
+        db_table = '"core"."source_types"'
 
 
 class Text(models.Model):
-    pt_br = models.CharField()
-    en = models.CharField(blank=True, null=True)
-    es = models.CharField(blank=True, null=True)
+    pt_br = models.CharField(unique=True)
+    en = models.CharField(unique=True, blank=True, null=True)
+    es = models.CharField(unique=True, blank=True, null=True)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
 
