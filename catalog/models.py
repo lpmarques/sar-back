@@ -1,7 +1,8 @@
 from django.db import models
 from django.db.models.functions import Now
-from catalog.querysets import InvasionRiskRegionQuerySet, NaturalOccurrenceRegionQuerySet, PlantQuerySet, PopularNameQuerySet, TaxonQuerySet, TraitQuerySet, TraitValueQuerySet
+from catalog.querysets import InvasionRiskRegionQuerySet, NaturalOccurrenceRegionQuerySet, PlantQuerySet, TraitQuerySet, TraitValueQuerySet
 from core.models import Content, Text
+from core.querysets import ContentQuerySet
 from geography.models import Biome, Country, State, VegetationType
 
 class Plant(models.Model):
@@ -58,7 +59,7 @@ class PopularName(models.Model):
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='popular_names')
     name = models.CharField()
 
-    objects = PopularNameQuerySet().as_manager()
+    objects = ContentQuerySet().as_manager()
 
     class Meta:
         managed = True
@@ -66,6 +67,10 @@ class PopularName(models.Model):
 
 
 class Taxon(models.Model):
+    class STATUS(models.TextChoices):
+        ACC = "accepted"
+        SYN = "synonym"
+
     content = models.ForeignKey(Content, models.DO_NOTHING)
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='taxa')
     family = models.CharField()
@@ -73,9 +78,9 @@ class Taxon(models.Model):
     species = models.CharField()
     subspecies = models.CharField(blank=True, null=True)
     variety = models.CharField(blank=True, null=True)
-    taxonomic_status = models.CharField(db_comment='[accepted, synonym]')
+    taxonomic_status = models.CharField(choices=STATUS.choices)
 
-    objects = TaxonQuerySet().as_manager()
+    objects = ContentQuerySet().as_manager()
 
     class Meta:
         managed = True

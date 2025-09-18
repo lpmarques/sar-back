@@ -1,8 +1,9 @@
 from rest_framework.serializers import CharField, DateTimeField, IntegerField, ListField, ModelSerializer, Serializer, SerializerMethodField, SlugRelatedField, ValidationError
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, Trait, TraitValue
-from core.models import Content, Text
-from core.serializers import SourceSerializer, UserPreviewSerializer
+from core.models import Text
+from core.serializers import ContentSerializer, SourceSerializer, UserPreviewSerializer
 import json
+import re
 
 pg_to_json_type = {
     'int4range': 'range',
@@ -12,6 +13,13 @@ pg_to_json_type = {
     'integer': 'number',
     'boolean': 'boolean'
 }
+
+def none_if_empty(value: str):
+    value = value.strip()
+    if len(value) == 0:
+        return None
+
+    return value
 
 class TraitSerializer(ModelSerializer):
     id = IntegerField(read_only=True)
@@ -43,7 +51,7 @@ class TraitSerializer(ModelSerializer):
             'text_value_options',
         ]
 
-class TraitValueSerializer(ModelSerializer):
+class TraitValueSerializer(ContentSerializer):
     # read
     content_id = IntegerField(read_only=True)
     trait_slug = SlugRelatedField(read_only=True, source='trait', slug_field='name')
@@ -52,35 +60,13 @@ class TraitValueSerializer(ModelSerializer):
     section_name = SlugRelatedField(read_only=True, source='trait', slug_field='section_text.pt_br')
     type = SerializerMethodField()
     boundaries = SerializerMethodField()
-    content_status = CharField(read_only=True, source='content.status')
-    content_proposer = UserPreviewSerializer(read_only=True, source='content.proposer')
-    source = SourceSerializer(read_only=True, source='content.source')
-    endorsements = IntegerField(read_only=True, source='content.endorsements')
-    proposed_at = DateTimeField(read_only=True, source='content.proposed_at')
-    accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
-    rejected_at = DateTimeField(read_only=True, source='content.rejected_at')
-    # write
-    source_id = IntegerField(write_only=True, required=True)
-    content_proposer_id = IntegerField(write_only=True, required=True)
-    content_proposer_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     # both
-    value = SerializerMethodField() # write via to_internal_value
+    value = CharField()
     trait_id = IntegerField(required=True)
     plant_id = IntegerField(required=True)
 
     def get_type(self, obj):
         return pg_to_json_type.get(obj.trait.data_type)
-
-    def get_value(self, obj):
-        value = obj.value
-        data_type = obj.trait.data_type
-
-        if data_type == "varchar[]":
-            return [item.pt_br for item in obj.texts.all()]
-        if data_type == "varchar":
-            return obj.texts.all()[0].pt_br
-
-        return json.loads(value)
 
     def get_boundaries(self, obj):
         data_type = obj.trait.data_type
@@ -94,28 +80,43 @@ class TraitValueSerializer(ModelSerializer):
 
         return []
     
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+
+        data_type = obj.trait.data_type
+
+        if data_type == "varchar[]":
+            data['value'] = [item.pt_br for item in obj.texts.all()]
+        elif data_type == "varchar":
+            data['value'] = obj.texts.all()[0].pt_br
+        else:
+            data['value'] = json.loads(obj.value)
+
+        return data
+    
     def to_internal_value(self, data):
         value = data.get('value')
         if not value:
             raise ValidationError("O campo 'value' é obrigatório.")
+
         try:
             trait = Trait.objects.denormalized().get(id=data.get('trait_id'))
         except Trait.DoesNotExist:
             raise ValidationError("Não há traço cadastrado com esse id.")
-        
-        self.loaded_value = value
-        self.trait = trait
 
         if trait.data_type == "varchar[]":
             self.texts = Text.objects.filter(**{'pt_br__in': value})
             data['value'] = json.dumps(sorted([text.en for text in self.texts]))
-        if trait.data_type == "varchar":
+        elif trait.data_type == "varchar":
             self.texts = Text.objects.filter(**{'pt_br': value})
             data['value'] = self.texts[0].en
         else:
             data['value'] = json.dumps(value)
 
-        return data
+        self.trait = trait
+        self.loaded_value = value
+
+        return super().to_internal_value(data) # default method must run after custom so that it validates 'value' as string
 
     def validate(self, data):
         trait = self.trait
@@ -128,7 +129,7 @@ class TraitValueSerializer(ModelSerializer):
             value=data['value'],
         )
         if matching_values:
-            raise ValidationError("Valor igual ao valor aceito ou a outra proposta já cadastrada.")
+            raise ValidationError("Valor igual ao aceito ou a um valor já proposto para a mesma planta.")
 
         if trait.data_type in ["varchar", "varchar[]"]:
             values = value if trait.data_type == "varchar[]" else [value]
@@ -156,12 +157,7 @@ class TraitValueSerializer(ModelSerializer):
         return data
 
     def create(self, validated_data):
-        content = Content.objects.create(
-            status = 'proposed',
-            source_id = validated_data.get('source_id'),
-            proposer_id = validated_data.get('content_proposer_id'),
-            proposer_comment = validated_data.get('content_proposer_comment'),
-        )
+        content = super().create(validated_data, "trait_value")
         
         trait_value = TraitValue.objects.create(
             content_id = content.id,
@@ -175,10 +171,11 @@ class TraitValueSerializer(ModelSerializer):
 
         return trait_value
 
-    class Meta:
+    class Meta(ContentSerializer.Meta):
         model = TraitValue
-        fields = [
+        fields = ContentSerializer.Meta.fields + [
             'content_id',
+            'content_status',
             'trait_id',
             'plant_id',
             'trait_slug',
@@ -188,16 +185,6 @@ class TraitValueSerializer(ModelSerializer):
             'type',
             'value',
             'boundaries',
-            'source',
-            'source_id',
-            'content_status',
-            'content_proposer',
-            'content_proposer_id',
-            'content_proposer_comment',
-            'endorsements',
-            'proposed_at',
-            'accepted_at',
-            'rejected_at',
         ]
 
 class PlantTraitValueSerializer(TraitValueSerializer):
@@ -218,12 +205,81 @@ class PlantTraitValuePreviewSerializer(PlantTraitValueSerializer):
             'value',
         ]
 
-class TaxonSerializer(ModelSerializer):
-    content_status = CharField(source='content.status')
+class TaxonSerializer(ContentSerializer):
+    # read
+    content_id = IntegerField(read_only=True)
+    genus = CharField(read_only=True)
+    # both
+    family = CharField()
+    species = CharField()
+    subspecies = CharField(required=False)
+    variety = CharField(required=False)
+    taxonomic_status = CharField()
+    plant_id = IntegerField()
+
+    patterns = {
+        'family': r'^[A-Z][a-z]+$',
+        'genus': r'^[A-Z][a-z]+$',
+        'species': r'^([A-Z][a-z]+)\s([a-z]{2,})$',
+        'subspecies': r'^[a-z]{2,}$',
+        'variety': r'^[a-z]{2,}$',
+    }
+    
+    def to_internal_value(self, data):
+        data = super().to_internal_value(data)
+
+        species_match = re.match(self.patterns['species'], data.get('species', ""))
+
+        data['family'] = none_if_empty(data.get('family', "").capitalize())
+        data['genus'] = species_match.group(1) if species_match else ""
+        data['species'] = none_if_empty(data.get('species', "").capitalize())
+        data['subspecies'] = none_if_empty(data.get('subspecies', "").lower())
+        data['variety'] = none_if_empty(data.get('variety', "").lower())
+        data['taxonomic_status'] = none_if_empty(data.get('taxonomic_status', "").lower())
+
+        return data
+
+    def validate(self, data):
+        if data['taxonomic_status'] not in Taxon.STATUS.values:
+            raise ValidationError(f"Campo 'taxonomic_status' inválido. Valores válidos: {Taxon.STATUS.values}.")
+        
+        for key, patt in self.patterns.items():
+            if data[key] and not re.match(patt, data[key]):
+                raise ValidationError(f"Campo '{key}' inválido. Valor deve ser compatível com a expressão regular '{patt}.'")
+        
+        matching_names = Taxon.objects.select_related('content').filter(
+            family=data['family'],
+            genus=data['genus'],
+            species=data['species'],
+            subspecies=data['subspecies'],
+            variety=data['variety'],
+            taxonomic_status=data['taxonomic_status'],
+            plant_id=data['plant_id'],
+            content__status__in=["accepted", "proposed"],
+        )
+
+        if matching_names:
+            raise ValidationError("Taxonomia idêntica a uma das aceitas ou propostas para a mesma planta.")
+        
+        return data
+
+    def create(self, validated_data):
+        content = super().create(validated_data, "taxon")
+        
+        return Taxon.objects.create(
+            content_id = content.id,
+            plant_id = validated_data['plant_id'],
+            family = validated_data['family'],
+            genus = validated_data['genus'],
+            species = validated_data['species'],
+            subspecies = validated_data['subspecies'],
+            variety = validated_data['variety'],
+            taxonomic_status = validated_data['taxonomic_status'],
+        )
 
     class Meta:
         model = Taxon
-        fields = [
+        fields = ContentSerializer.Meta.fields + [
             'content_id',
             'family',
             'genus',
@@ -231,36 +287,15 @@ class TaxonSerializer(ModelSerializer):
             'subspecies',
             'variety',
             'taxonomic_status',
-            'content_status',
             'plant_id',
         ]
 
 class PlantTaxonSerializer(TaxonSerializer):
-    content_proposer = UserPreviewSerializer(source='content.proposer')
-    endorsements = IntegerField(source='content.endorsements')
-    source = SourceSerializer(source='content.source')
-    proposed_at = DateTimeField(read_only=True, source='content.proposed_at')
-    accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
-    rejected_at = DateTimeField(read_only=True, source='content.rejected_at')
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        data.pop('plant_id', None)
 
-    class Meta:
-        model = Taxon
-        fields = [
-            'content_id',
-            'family',
-            'genus',
-            'species',
-            'subspecies',
-            'variety',
-            'taxonomic_status',
-            'content_status',
-            'content_proposer',
-            'endorsements',
-            'source',
-            'proposed_at',
-            'accepted_at',
-            'rejected_at',
-        ]
+        return data
 
 class PlantTaxonPreviewSerializer(PlantTaxonSerializer):
     class Meta:
@@ -275,74 +310,76 @@ class PlantTaxonPreviewSerializer(PlantTaxonSerializer):
             'taxonomic_status',
         ]
 
-class PopularNameSerializer(ModelSerializer):
-    content_status = CharField(read_only=True, source='content.status')
+class PopularNameSerializer(ContentSerializer):
+    # read
+    content_id = IntegerField(read_only=True)
+    # both
+    name = CharField()
+    plant_id = IntegerField()
 
-    class Meta:
+    def to_internal_value(self, data):
+        data['name'] = none_if_empty(data.get('name',"").lower())
+        
+        return super().to_internal_value(data)
+
+    def validate(self, data):
+        matching_names = PopularName.objects.filter(
+            name=data['name'],
+            plant_id=data['plant_id'],
+            content__status__in=["accepted", "proposed"],
+        )
+        if matching_names:
+            raise ValidationError("Nome igual a um dos nomes aceitos ou propostos para a mesma planta.")
+        
+        return data
+
+    def create(self, validated_data):
+        content = super().create(validated_data, "popular_name")
+        
+        return PopularName.objects.create(
+            content_id = content.id,
+            plant_id = validated_data['plant_id'],
+            name = validated_data['name'],
+        )
+
+    class Meta(ContentSerializer.Meta):
         model = PopularName
-        fields = [
+        fields = ContentSerializer.Meta.fields + [
             'content_id',
             'name',
-            'content_status',
             'plant_id',
         ]
 
 class PlantPopularNameSerializer(PopularNameSerializer):
-    content_proposer = UserPreviewSerializer(source='content.proposer')
-    endorsements = IntegerField(source='content.endorsements')
-    source = SourceSerializer(source='content.source')
-    proposed_at = DateTimeField(read_only=True, source='content.proposed_at')
-    accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
-    rejected_at = DateTimeField(read_only=True, source='content.rejected_at')
-    
-    class Meta:
-        model = PopularName
-        fields = [
-            'content_id',
-            'name',
-            'content_status',
-            'content_proposer',
-            'endorsements',
-            'source',
-            'proposed_at',
-            'accepted_at',
-            'rejected_at',
-        ]
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        data.pop('plant_id', None)
 
-class NaturalOccurrenceRegionSerializer(Serializer):
+        return data
+
+class NaturalOccurrenceRegionSerializer(ContentSerializer):
+    content_id = IntegerField(read_only=True)
     country = CharField(read_only=True, source='country.name_text.pt_br')
     state = CharField(read_only=True, source='state.code')
     biome = CharField(read_only=True, source='biome.name')
     vegetation_type = CharField(read_only=True, source='vegetation_type.name')
-    plant_ids = ListField(read_only=True)
 
-class PlantNaturalOccurrenceRegionSerializer(ModelSerializer):
-    country = SlugRelatedField(read_only=True, slug_field='name_text__pt_br')
-    state = SlugRelatedField(read_only=True, slug_field='code')
-    biome = SlugRelatedField(read_only=True, slug_field='name')
-    vegetation_type = SlugRelatedField(read_only=True, slug_field='name')
-    content_status = CharField(read_only=True, source='content.status')
-    content_proposer = UserPreviewSerializer(read_only=True, source='content.proposer')
-    source = SourceSerializer(read_only=True, source='content.source')
-    proposed_at = DateTimeField(read_only=True, source='content.proposed_at')
-    accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
-    rejected_at = DateTimeField(read_only=True, source='content.rejected_at')
-
-    class Meta:
+    class Meta(ContentSerializer.Meta):
         model = NaturalOccurrenceRegion
-        fields = [
+        fields = ContentSerializer.Meta.fields + [
             'content_id',
             'country',
             'state',
             'biome',
             'vegetation_type',
-            'content_status',
-            'content_proposer',
-            'source',
-            'proposed_at',
-            'accepted_at',
-            'rejected_at',
         ]
+
+class PlantNaturalOccurrenceRegionSerializer(NaturalOccurrenceRegionSerializer):
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        data.pop('plant_id', None)
+
+        return data
 
 class PlantNaturalOccurrenceRegionPreviewSerializer(PlantNaturalOccurrenceRegionSerializer):
     class Meta:
@@ -355,12 +392,7 @@ class PlantNaturalOccurrenceRegionPreviewSerializer(PlantNaturalOccurrenceRegion
             'vegetation_type',
         ]
 
-class PlantSerializer(ModelSerializer):
-    content_status = CharField(read_only=True, source='content.status')
-    proposed_at = DateTimeField(read_only=True, source='content.proposed_at')
-    accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
-    rejected_at = DateTimeField(read_only=True, source='content.rejected_at')
-
+class PlantSerializer(ContentSerializer):
     def __init__(self,  *args, **kwargs):
         params = kwargs.pop('params', {})
         if params.get('with_taxa'):

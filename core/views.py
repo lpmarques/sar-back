@@ -158,6 +158,52 @@ class UserTokenView(APIView):
         return Response(content, status=status.HTTP_200_OK)
 
 
+class ContentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data
+        data.update({'content_proposer_id': request.user.id})
+        serializer = self.serializer_class(data=data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            object = serializer.save()
+        except Exception as err:
+            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        content = {
+            'content_id': object.content_id,
+            'msg': 'Proposta cadastrada com sucesso.'
+        }
+    
+        return Response(content, status=status.HTTP_201_CREATED)
+    
+    def delete(self, request, content_id):
+        try:
+            content = Content.objects.get(id=content_id, status="proposed")
+        except Content.DoesNotExist:
+            return Response({'msg': 'Não há proposta cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if content.proposer_id != request.user.id:
+            return Response({'msg': 'Você não tem autorização para rejeitar essa proposta.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if content.rejected_at:
+            return Response({'msg': 'Proposta já rejeitada.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        content.status = "rejected"
+        content.rejected_at = Now()
+        content.save()
+
+        content = {
+            'msg': 'Proposta rejeitada com sucesso.'
+        }
+    
+        return Response(content, status=status.HTTP_200_OK)
+
+
 class ContentEndorsementView(APIView):
     permission_classes = [IsAuthenticated]
 

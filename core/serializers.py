@@ -1,8 +1,8 @@
 from django.db.models import Prefetch, Q
 from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, IntegerField, JSONField, ModelSerializer, Serializer, ValidationError
 from core.models import Content, ContentEndorsement, Source, SourceField, SourceFieldValue, SourceType, User
-import json
 from jsonschema import validate, FormatChecker
+import json
 
 class SourceFieldSerializer(ModelSerializer):
     name = CharField(read_only=True, source='name_text.pt_br')
@@ -26,6 +26,7 @@ class SourceFieldValueSerializer(ModelSerializer):
     schema = JSONField(read_only=True, source='field.schema')
     position = IntegerField(read_only=True, source='field.position')
     # write
+    value = CharField()
     field_id = IntegerField(write_only=True)
 
     def to_representation(self, obj):
@@ -53,7 +54,7 @@ class SourceFieldValueSerializer(ModelSerializer):
         if field.schema['type'] != "string":
             data['value'] = json.dumps(value)
 
-        return super().to_internal_value(data)
+        return super().to_internal_value(data) # default method must run after custom so that it validates 'value' as string
 
     class Meta:
         model = SourceFieldValue
@@ -230,11 +231,49 @@ class UserTokenCreationSerializer(Serializer):
     email = EmailField(max_length=255)
     password = CharField(max_length=128)
 
+class ContentSerializer(ModelSerializer):
+    # read
+    content_status = CharField(read_only=True, source='content.status')
+    content_proposer = UserPreviewSerializer(read_only=True, source='content.proposer')
+    source = SourceSerializer(read_only=True, source='content.source')
+    endorsements = IntegerField(read_only=True, source='content.endorsements')
+    proposed_at = DateTimeField(read_only=True, source='content.proposed_at')
+    accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
+    rejected_at = DateTimeField(read_only=True, source='content.rejected_at')
+    # write
+    source_id = IntegerField(write_only=True, required=True)
+    content_proposer_id = IntegerField(write_only=True, required=True)
+    content_proposer_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
+
+    def create(self, validated_data, content_type):
+        return Content.objects.create(
+            status = 'proposed',
+            type = content_type,
+            source_id = validated_data.get('source_id'),
+            proposer_id = validated_data.get('content_proposer_id'),
+            proposer_comment = validated_data.get('content_proposer_comment'),
+        )
+
+    class Meta:
+        model = Content
+        fields = [
+            'source',
+            'source_id',
+            'content_status',
+            'content_proposer',
+            'content_proposer_id',
+            'content_proposer_comment',
+            'endorsements',
+            'proposed_at',
+            'accepted_at',
+            'rejected_at',
+        ]
+
 class ContentEndorsementSerializer(ModelSerializer):
     # read
     id = IntegerField(read_only=True)
     endorser = UserPreviewSerializer(read_only=True)
-    created_at = CharField(read_only=True)
+    created_at = DateTimeField(read_only=True)
     # write
     endorser_id = IntegerField(write_only=True, required=True)
     # both

@@ -5,8 +5,13 @@ from django.db.models.functions import Now
 from core.querysets import ContentEndorsementQuerySet, SourceFieldQuerySet, SourceFieldValueQuerySet, SourceQuerySet, SourceTypeQuerySet
 
 class Content(models.Model):
-    type = models.CharField(db_comment='[plant, popular_name, taxon, trait_value, natural_occurrence_region, invasion_risk_region]')
-    status = models.CharField(db_default='proposed', db_comment='[proposed, accepted, rejected]')
+    class STATUS(models.TextChoices):
+        PRO = "proposed"
+        ACC = "accepted"
+        REJ = "rejected"
+
+    type = models.CharField()
+    status = models.CharField(db_default='proposed', choices=STATUS.choices)
     proposer = models.ForeignKey('User', models.DO_NOTHING, related_name="proposed_contents")
     acceptor = models.ForeignKey('User', models.DO_NOTHING, blank=True, null=True, related_name="accepted_contents")
     rejector = models.ForeignKey('User', models.DO_NOTHING, blank=True, null=True, related_name="rejected_contents")

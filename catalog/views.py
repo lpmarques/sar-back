@@ -1,11 +1,11 @@
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models.functions import Now
-import pandas as pd
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from core.views import ContentView
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, TraitValue
 from catalog.serializers.models import *
 from catalog.serializers.parameters import *
@@ -20,7 +20,7 @@ class PlantView(APIView):
         params = PlantParamsSerializer(self.request.query_params).data
 
         query = Plant.objects.denormalized()
-        query = query.with_popular_names(PopularNameParamsSerializer(self.fetch_filter_params(params, 'popular_names')).data) if params.get('with_popular_names') else Plant.objects
+        query = query.with_popular_names(PopularNameParamsSerializer(self.fetch_filter_params(params, 'popular_names')).data) if params.get('with_popular_names') else query
         query = query.with_taxa(TaxonParamsSerializer(self.fetch_filter_params(params, 'taxa')).data) if params.get('with_taxa') else query
         query = query.with_trait_values(TraitValueParamsSerializer(self.fetch_filter_params(params, 'trait_values')).data) if params.get('with_trait_values') else query
         query = query.with_natural_occurrence_regions(NaturalOccurrenceRegionParamsSerializer(self.fetch_filter_params(params, 'natural_occurrence_regions')).data) if params.get('with_natural_occurrence_regions') else query
@@ -50,7 +50,7 @@ class PlantListView(PlantView):
         serializer = PlantSerializer(plants, many=True, params=PlantParamsSerializer(request.query_params).data)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
-
+    
 
 class TraitView(APIView):
     permission_classes = [AllowAny]
@@ -81,50 +81,9 @@ class TraitListView(TraitView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class TraitValueView(APIView):
+class TraitValueView(ContentView):
     permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        data = request.data
-        data.update({'content_proposer_id': request.user.id})
-        serializer = TraitValueSerializer(data=data)
-
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            trait_value = serializer.save()
-        except Exception as err:
-            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        content = {
-            'content_id': trait_value.content_id,
-            'msg': 'Versão cadastrada com sucesso.'
-        }
-    
-        return Response(content, status=status.HTTP_201_CREATED)
-    
-    def delete(self, request, content_id):
-        try:
-            content = Content.objects.get(id=content_id, status="proposed")
-        except Content.DoesNotExist:
-            return Response({'msg': 'Não há proposta cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if content.proposer_id != request.user.id:
-            return Response({'msg': 'Você não tem autorização para rejeitar essa proposta.'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        if content.rejected_at:
-            return Response({'msg': 'Proposta já rejeitada.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        content.status = "rejected"
-        content.rejected_at = Now()
-        content.save()
-
-        content = {
-            'msg': 'Proposta rejeitada com sucesso.'
-        }
-    
-        return Response(content, status=status.HTTP_200_OK)
+    serializer_class = TraitValueSerializer
 
 
 class PlantTraitValueListView(APIView):
@@ -146,13 +105,13 @@ class PlantTraitValueListView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+class PopularNameView(ContentView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = PopularNameSerializer
+
+
 class PopularNameListView(APIView):
     permission_classes = [AllowAny]
-
-    def group_by_popular_name(self, data):
-        grouped_df = pd.DataFrame(data).groupby(['name', 'content_status']).agg(plant_ids=('plant_id', lambda x: list(x)))
-        
-        return grouped_df.reset_index().to_dict(orient='records')
     
     def get_queryset(self):
         filters = PopularNameParamsSerializer(self.request.query_params).data
@@ -160,25 +119,29 @@ class PopularNameListView(APIView):
         return PopularName.objects.filter(**filters)
 
     def get(self, request):
-        popular_names = self.get_queryset().select_related('content')
+        popular_names = self.get_queryset().denormalized()
         serializer = PopularNameSerializer(popular_names, many=True)
-        data = self.group_by_popular_name(serializer.data) # TODO: convert this step into values aggregation + value queryset serialization
 
-        return Response(data, status=status.HTTP_200_OK)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
 
 class PlantPopularNameListView(PopularNameListView):
     def get(self, request, plant_id):
         try:
             plant = Plant.objects.get(id=plant_id)
-            popular_names = self.get_queryset().denormalized().filter(plant_id=plant_id)
+            popular_names = self.get_queryset().denormalized().filter(plant_id=plant.id)
         except Plant.DoesNotExist:
             content = {'msg': 'Planta não cadastrada'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = PlantPopularNameSerializer(popular_names, many=True)
+        serializer = PopularNameSerializer(popular_names, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class TaxonView(ContentView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = TaxonSerializer
 
 
 class TaxonListView(APIView):
@@ -190,7 +153,7 @@ class TaxonListView(APIView):
         return Taxon.objects.filter(**filters)
 
     def get(self, request):
-        taxa = self.get_queryset().select_related('content')
+        taxa = self.get_queryset().denormalized()
         serializer = TaxonSerializer(taxa, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -210,12 +173,17 @@ class PlantTaxonListView(TaxonListView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+class NaturalOccurrenceRegionListView(ContentView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = NaturalOccurrenceRegionSerializer
+
+
 class NaturalOccurrenceRegionListView(APIView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
         filters = NaturalOccurrenceRegionParamsSerializer(self.request.query_params).data
-        return NaturalOccurrenceRegion.objects.denormalized().filter(**filters)
+        return NaturalOccurrenceRegion.objects.denormalized().only_important_fields().filter(**filters)
         
     def get(self, request):
         natural_occurrence_regions = self.get_queryset().values(
