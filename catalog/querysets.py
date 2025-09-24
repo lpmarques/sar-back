@@ -124,8 +124,11 @@ class NaturalOccurrenceRegionQuerySet(ContentQuerySet):
             'country__name_text',
             'state__name',
             'state__code',
+            'state__country_id',
             'biome__name',
+            'biome__country_id',
             'vegetation_type__name',
+            'vegetation_type__country_id',
             *ContentQuerySet.get_important_fields(self)
         )
 

@@ -1,7 +1,10 @@
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework.serializers import CharField, DateTimeField, IntegerField, ListField, ModelSerializer, Serializer, SerializerMethodField, SlugRelatedField, ValidationError
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, Trait, TraitValue
 from core.models import Text
-from core.serializers import ContentSerializer, SourceSerializer, UserPreviewSerializer
+from core.serializers import ContentSerializer
+from geography.models import Biome, Country, State, VegetationArea, VegetationType
+from geography.serializers import BiomeSerializer, CountrySerializer, StateSerializer, VegetationTypeSerializer
 import json
 import re
 
@@ -122,6 +125,11 @@ class TraitValueSerializer(ContentSerializer):
         trait = self.trait
         value = self.loaded_value
 
+        try:
+            Plant.objects.get(id=data['plant_id'])
+        except Plant.DoesNotExist:
+            raise ValidationError("Não há planta cadastrada com esse id.")
+
         matching_values = TraitValue.objects.filter(
             plant_id=data['plant_id'],
             trait_id=data['trait_id'],
@@ -141,6 +149,7 @@ class TraitValueSerializer(ContentSerializer):
                     raise ValidationError(
                         f"Valor '{item}' inválido para o traço. Valores permitidos: {json.dumps(options)}"
                     )
+        # TODO: replace below with json schema validation
         if trait.data_type == "number":
             if value >= trait.numeric_value_min and value <= trait.numeric_value_max:
                 raise ValidationError(
@@ -175,9 +184,8 @@ class TraitValueSerializer(ContentSerializer):
         model = TraitValue
         fields = ContentSerializer.Meta.fields + [
             'content_id',
-            'content_status',
-            'trait_id',
             'plant_id',
+            'trait_id',
             'trait_slug',
             'trait_name',
             'section_slug',
@@ -187,14 +195,7 @@ class TraitValueSerializer(ContentSerializer):
             'boundaries',
         ]
 
-class PlantTraitValueSerializer(TraitValueSerializer):
-    def to_representation(self, obj):
-        data = super().to_representation(obj)
-        data.pop('plant_id', None)
-
-        return data
-
-class PlantTraitValuePreviewSerializer(PlantTraitValueSerializer):
+class TraitValuePreviewSerializer(TraitValueSerializer):
     class Meta:
         model = TraitValue
         fields = [
@@ -240,6 +241,11 @@ class TaxonSerializer(ContentSerializer):
         return data
 
     def validate(self, data):
+        try:
+            Plant.objects.get(id=data['plant_id'])
+        except Plant.DoesNotExist:
+            raise ValidationError("Não há planta cadastrada com esse id.")
+        
         if data['taxonomic_status'] not in Taxon.STATUS.values:
             raise ValidationError(f"Campo 'taxonomic_status' inválido. Valores válidos: {Taxon.STATUS.values}.")
         
@@ -281,23 +287,16 @@ class TaxonSerializer(ContentSerializer):
         model = Taxon
         fields = ContentSerializer.Meta.fields + [
             'content_id',
+            'plant_id',
             'family',
             'genus',
             'species',
             'subspecies',
             'variety',
             'taxonomic_status',
-            'plant_id',
         ]
 
-class PlantTaxonSerializer(TaxonSerializer):
-    def to_representation(self, obj):
-        data = super().to_representation(obj)
-        data.pop('plant_id', None)
-
-        return data
-
-class PlantTaxonPreviewSerializer(PlantTaxonSerializer):
+class TaxonPreviewSerializer(TaxonSerializer):
     class Meta:
         model = Taxon
         fields = [
@@ -317,12 +316,25 @@ class PopularNameSerializer(ContentSerializer):
     name = CharField()
     plant_id = IntegerField()
 
+    patterns = {
+        'name': r'^[-a-z]+$',
+    }
+
     def to_internal_value(self, data):
         data['name'] = none_if_empty(data.get('name',"").lower())
         
         return super().to_internal_value(data)
 
     def validate(self, data):
+        try:
+            Plant.objects.get(id=data['plant_id'])
+        except Plant.DoesNotExist:
+            raise ValidationError("Não há planta cadastrada com esse id.")
+        
+        for key, patt in self.patterns.items():
+            if data[key] and not re.match(patt, data[key]):
+                raise ValidationError(f"Campo '{key}' inválido. Valor deve ser compatível com a expressão regular '{patt}.'")
+        
         matching_names = PopularName.objects.filter(
             name=data['name'],
             plant_id=data['plant_id'],
@@ -346,42 +358,95 @@ class PopularNameSerializer(ContentSerializer):
         model = PopularName
         fields = ContentSerializer.Meta.fields + [
             'content_id',
-            'name',
             'plant_id',
+            'name',
         ]
 
-class PlantPopularNameSerializer(PopularNameSerializer):
-    def to_representation(self, obj):
-        data = super().to_representation(obj)
-        data.pop('plant_id', None)
+class NaturalOccurrenceRegionSerializer(ContentSerializer):
+    # read
+    content_id = IntegerField(read_only=True)
+    country = CountrySerializer(read_only=True)
+    state = StateSerializer(read_only=True)
+    biome = BiomeSerializer(read_only=True)
+    vegetation_type = VegetationTypeSerializer(read_only=True)
+    # write
+    country_id = IntegerField(write_only=True, required=True)
+    state_id = IntegerField(write_only=True)
+    biome_id = IntegerField(write_only=True)
+    vegetation_type_id = IntegerField(write_only=True)
+    # both
+    plant_id = IntegerField()
 
+    fk_fields_to_models = {
+        'country_id': Country,
+        'state_id': State,
+        'biome_id': Biome,
+        'vegetation_type_id': VegetationType,
+    }
+
+    def validate(self, data):
+        missing_id_errors = []
+        for field, model in self.fk_fields_to_models.items():
+            try:
+                if field in data:
+                    model.objects.get(id=data[field])
+            except ObjectDoesNotExist:
+                missing_id_errors.append(f"Não há objeto cadastrado com o {field} passado.")
+
+        if missing_id_errors:
+            raise ValidationError(missing_id_errors)
+
+        if data.get('vegetation_type_id'):
+            matching_vegetation_areas = VegetationArea.objects.filter(
+                country_id=data['country_id'],
+                state_id=data.get('state_id'),
+                biome_id=data.get('biome_id'),
+                vegetation_type_id=data['vegetation_type_id'],
+            )
+            if len(matching_vegetation_areas) == 0:
+                raise ValidationError("Item inconsistente com as áreas de vegetação na base de dados.")
+
+        matching_occurrence_regions = NaturalOccurrenceRegion.objects.filter(
+            plant_id=data['plant_id'],
+            country_id=data['country_id'],
+            state_id=data.get('state_id'),
+            biome_id=data.get('biome_id'),
+            vegetation_type_id=data.get('vegetation_type_id'),
+            content__status__in=["accepted", "proposed"],
+        )
+        if matching_occurrence_regions:
+            raise ValidationError("Item igual a um dos aceitos ou propostos para a mesma planta.")
+        
         return data
 
-class NaturalOccurrenceRegionSerializer(ContentSerializer):
-    content_id = IntegerField(read_only=True)
-    country = CharField(read_only=True, source='country.name_text.pt_br')
-    state = CharField(read_only=True, source='state.code')
-    biome = CharField(read_only=True, source='biome.name')
-    vegetation_type = CharField(read_only=True, source='vegetation_type.name')
+    def create(self, validated_data):
+        content = super().create(validated_data, "popular_name")
+        
+        return NaturalOccurrenceRegion.objects.create(
+            content_id = content.id,
+            plant_id = validated_data['plant_id'],
+            country_id=validated_data['country_id'],
+            state_id=validated_data['state_id'],
+            biome_id=validated_data['biome_id'],
+            vegetation_type_id=validated_data['vegetation_type_id'],
+        )
 
     class Meta(ContentSerializer.Meta):
         model = NaturalOccurrenceRegion
         fields = ContentSerializer.Meta.fields + [
             'content_id',
+            'plant_id',
             'country',
             'state',
             'biome',
             'vegetation_type',
+            'country_id',
+            'state_id',
+            'biome_id',
+            'vegetation_type_id',
         ]
 
-class PlantNaturalOccurrenceRegionSerializer(NaturalOccurrenceRegionSerializer):
-    def to_representation(self, obj):
-        data = super().to_representation(obj)
-        data.pop('plant_id', None)
-
-        return data
-
-class PlantNaturalOccurrenceRegionPreviewSerializer(PlantNaturalOccurrenceRegionSerializer):
+class NaturalOccurrenceRegionPreviewSerializer(NaturalOccurrenceRegionSerializer):
     class Meta:
         model = NaturalOccurrenceRegion
         fields = [
@@ -396,13 +461,13 @@ class PlantSerializer(ContentSerializer):
     def __init__(self,  *args, **kwargs):
         params = kwargs.pop('params', {})
         if params.get('with_taxa'):
-            self.fields['taxa'] = PlantTaxonPreviewSerializer(many=True, read_only=True)
+            self.fields['taxa'] = TaxonPreviewSerializer(many=True, read_only=True)
         if params.get('with_popular_names'):
             self.fields['popular_names'] = SlugRelatedField(many=True, read_only=True, slug_field='name')
         if params.get('with_trait_values'):
-            self.fields['trait_values'] = PlantTraitValuePreviewSerializer(many=True, read_only=True)
+            self.fields['trait_values'] = TraitValuePreviewSerializer(many=True, read_only=True)
         if params.get('with_natural_occurrence_regions'):
-            self.fields['natural_occurrence_regions'] = PlantNaturalOccurrenceRegionPreviewSerializer(many=True, read_only=True)
+            self.fields['natural_occurrence_regions'] = NaturalOccurrenceRegionPreviewSerializer(many=True, read_only=True)
 
         super().__init__(*args, **kwargs)
 

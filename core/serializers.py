@@ -181,7 +181,26 @@ class SourceTypeSerializer(ModelSerializer):
             'fields',
         )
 
-class UserPreviewSerializer(ModelSerializer):
+class UserSerializer(ModelSerializer):
+    country = CharField(read_only=True)
+    state = CharField(read_only=True)
+    municipality = CharField(read_only=True)
+    
+    class Meta():
+        model = User
+        fields = [
+            'id',
+            'email',
+            'first_name',
+            'last_name',
+            'occupation',
+            'company',
+            'country',
+            'state',
+            'municipality',
+        ]
+
+class UserPreviewSerializer(UserSerializer):
     class Meta:
         model = User
         fields = [
@@ -189,21 +208,6 @@ class UserPreviewSerializer(ModelSerializer):
             'email',
             'first_name',
             'last_name',
-        ]
-
-class UserSerializer(UserPreviewSerializer):
-    country = CharField(read_only=True)
-    state = CharField(read_only=True)
-    municipality = CharField(read_only=True)
-    
-    class Meta(UserPreviewSerializer.Meta):
-        model = User
-        fields = UserPreviewSerializer.Meta.fields + [
-            'occupation',
-            'company',
-            'country',
-            'state',
-            'municipality',
         ]
 
 class UserCreationSerializer(Serializer):
@@ -235,15 +239,18 @@ class ContentSerializer(ModelSerializer):
     # read
     content_status = CharField(read_only=True, source='content.status')
     content_proposer = UserPreviewSerializer(read_only=True, source='content.proposer')
-    source = SourceSerializer(read_only=True, source='content.source')
     endorsements = IntegerField(read_only=True, source='content.endorsements')
     proposed_at = DateTimeField(read_only=True, source='content.proposed_at')
     accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
     rejected_at = DateTimeField(read_only=True, source='content.rejected_at')
     # write
-    source_id = IntegerField(write_only=True, required=True)
     content_proposer_id = IntegerField(write_only=True, required=True)
     content_proposer_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
+    # both
+    source_id = IntegerField(required=True, source='content.source_id')
+
+    def to_internal_value(self, data):
+        return data # must skip default method to avoid source_id nesting on write
 
     def create(self, validated_data, content_type):
         return Content.objects.create(
@@ -257,7 +264,6 @@ class ContentSerializer(ModelSerializer):
     class Meta:
         model = Content
         fields = [
-            'source',
             'source_id',
             'content_status',
             'content_proposer',

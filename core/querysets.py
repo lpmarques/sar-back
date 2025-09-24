@@ -15,22 +15,12 @@ class ContentQuerySet(QuerySet):
         return self.select_related(
             'content',
             'content__proposer',
-            'content__source',
-            'content__source__type',
-            'content__source__type__name_text',
-        ).prefetch_related(
-            Prefetch(
-                'content__source__field_values',
-                queryset=apps.get_model('core', 'SourceFieldValue').objects.active().select_related(
-                    'field',
-                    'field__name_text',
-                )
-            ),
         )
     
     def get_important_fields(self):
         return [
             'content__status',
+            'content__source_id',
             'content__endorsements',
             'content__proposed_at',
             'content__accepted_at',
@@ -39,15 +29,6 @@ class ContentQuerySet(QuerySet):
             'content__proposer__email',
             'content__proposer__first_name',
             'content__proposer__last_name',
-            'content__source__id',
-            'content__source__type__is_static',
-            'content__source__type__name_text__pt_br',
-            'content__source__field_values__value',
-            'content__source__field_values__field__schema',
-            'content__source__field_values__field__name_text__pt_br',
-            'content__source__creator_id',
-            'content__source__created_at',
-            'content__source__deleted_at',
         ]
 
 class ContentEndorsementQuerySet(QuerySet):

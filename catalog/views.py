@@ -100,7 +100,7 @@ class PlantTraitValueListView(APIView):
             content = {'msg': 'Planta não cadastrada'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = PlantTraitValueSerializer(trait_values, many=True)
+        serializer = TraitValueSerializer(trait_values, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -168,12 +168,12 @@ class PlantTaxonListView(TaxonListView):
             content = {'msg': 'Planta não cadastrada'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
         
-        serializer = PlantTaxonSerializer(taxa, many=True)
+        serializer = TaxonSerializer(taxa, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class NaturalOccurrenceRegionListView(ContentView):
+class NaturalOccurrenceRegionView(ContentView):
     permission_classes = [IsAuthenticated]
     serializer_class = NaturalOccurrenceRegionSerializer
 
@@ -206,6 +206,6 @@ class PlantNaturalOccurrenceRegionListView(NaturalOccurrenceRegionListView):
             content = {'msg': 'Planta não cadastrada'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = PlantNaturalOccurrenceRegionSerializer(natural_occurrence_regions, many=True)
+        serializer = NaturalOccurrenceRegionSerializer(natural_occurrence_regions, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
