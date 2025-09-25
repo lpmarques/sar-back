@@ -221,7 +221,7 @@ class TaxonSerializer(ContentSerializer):
     patterns = {
         'family': r'^[A-Z][a-z]+$',
         'genus': r'^[A-Z][a-z]+$',
-        'species': r'^([A-Z][a-z]+)\s([a-z]{2,})$',
+        'species': r'^([A-Z][a-z]+)\s((?:x\s)?[a-z]+)$',
         'subspecies': r'^[a-z]{2,}$',
         'variety': r'^[a-z]{2,}$',
     }
