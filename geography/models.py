@@ -135,11 +135,11 @@ class State(models.Model):
 
 
 class VegetationArea(models.Model):
-    country = models.ForeignKey(Country, on_delete=models.DO_NOTHING)
-    state = models.ForeignKey(State, on_delete=models.DO_NOTHING, blank=True, null=True)
-    biome = models.ForeignKey(Biome, on_delete=models.DO_NOTHING, blank=True, null=True)
+    country = models.ForeignKey(Country, on_delete=models.DO_NOTHING, related_name='vegetation_areas')
+    state = models.ForeignKey(State, on_delete=models.DO_NOTHING, blank=True, null=True, related_name='vegetation_areas')
+    biome = models.ForeignKey(Biome, on_delete=models.DO_NOTHING, blank=True, null=True, related_name='vegetation_areas')
+    vegetation_type = models.ForeignKey('VegetationType', on_delete=models.DO_NOTHING, related_name='vegetation_areas')
     area = models.GeometryField()
-    vegetation_type = models.ForeignKey('VegetationType', on_delete=models.DO_NOTHING)
     source = models.ForeignKey(Source, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())

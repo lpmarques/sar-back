@@ -19,10 +19,11 @@ class PopularNameParamsSerializer(Serializer):
     content__status__in = StringListField(required=False, allow_null=False, source='status')
 
 class NaturalOccurrenceRegionParamsSerializer(Serializer):
-    country__name_text__pt_br = CharField(required=False, allow_blank=False, source='country') # TODO: match with slug field
-    state__code = CharField(required=False, allow_null=False, source='state') # TODO: match with slug field
-    biome__name = CharField(required=False, allow_blank=False, source='biome') # TODO: match with slug field
-    vegetation_type__name = CharField(required=False, allow_blank=False, source='vegetation_type') # TODO: match with slug field
+    content__status__in = StringListField(required=False, allow_null=False, source='status')
+    country__name_text__pt_br = CharField(required=False, allow_blank=False, source='country')
+    state__code = CharField(required=False, allow_null=False, source='state')
+    biome__name = CharField(required=False, allow_blank=False, source='biome')
+    vegetation_type__name = CharField(required=False, allow_blank=False, source='vegetation_type')
 
 class TraitParamsSerializer(Serializer):
     section__in = StringListField(required=False, allow_null=False, source='section_slugs')

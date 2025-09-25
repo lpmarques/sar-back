@@ -5,15 +5,20 @@ from django.db.models.functions import Now
 from core.querysets import ContentEndorsementQuerySet, SourceFieldQuerySet, SourceFieldValueQuerySet, SourceQuerySet, SourceTypeQuerySet
 
 class Content(models.Model):
-    type = models.CharField(db_comment='[plant, popular_name, taxon, trait_value, natural_occurrence_region, invasion_risk_region]')
-    status = models.CharField(db_default='proposed', db_comment='[proposed, accepted, rejected]')
+    class STATUS(models.TextChoices):
+        PRO = "proposed"
+        ACC = "accepted"
+        REJ = "rejected"
+
+    type = models.CharField()
+    status = models.CharField(db_default='proposed', choices=STATUS.choices)
     proposer = models.ForeignKey('User', models.DO_NOTHING, related_name="proposed_contents")
     acceptor = models.ForeignKey('User', models.DO_NOTHING, blank=True, null=True, related_name="accepted_contents")
     rejector = models.ForeignKey('User', models.DO_NOTHING, blank=True, null=True, related_name="rejected_contents")
     proposer_comment = models.CharField(max_length=300, blank=True, null=True)
     rejector_comment = models.CharField(max_length=300, blank=True, null=True)
     source = models.ForeignKey('Source', models.DO_NOTHING, blank=True, null=True, related_name="contents")
-    endorsements = models.IntegerField(db_default=0)
+    endorsements_count = models.IntegerField(db_default=0)
     proposed_at = models.DateTimeField(db_default=Now())
     accepted_at = models.DateTimeField(blank=True, null=True)
     rejected_at = models.DateTimeField(blank=True, null=True)
@@ -24,7 +29,7 @@ class Content(models.Model):
 
 
 class ContentEndorsement(models.Model):
-    content = models.ForeignKey(Content, models.DO_NOTHING)
+    content = models.ForeignKey('Content', models.DO_NOTHING, related_name="endorsements")
     endorser = models.ForeignKey('User', models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)

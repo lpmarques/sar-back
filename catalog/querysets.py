@@ -1,9 +1,10 @@
 from django.apps import apps
 from django.db.models import QuerySet, Prefetch
+from core.querysets import ContentQuerySet
 
-class PlantQuerySet(QuerySet):
+class PlantQuerySet(ContentQuerySet):
     def denormalized(self):
-        return self.select_related('content')
+        return super().denormalized()
 
     def with_popular_names(self, custom_filters: dict):
         filters = {'content__status__in': ['accepted']}
@@ -15,7 +16,7 @@ class PlantQuerySet(QuerySet):
                 queryset=apps.get_model('catalog', 'PopularName').objects.filter(**filters)
             ),
         )
-  
+
     def with_taxa(self, custom_filters: dict):
         filters = {'content__status__in': ['accepted']}
         filters.update(custom_filters)
@@ -26,7 +27,7 @@ class PlantQuerySet(QuerySet):
                 queryset=apps.get_model('catalog', 'Taxon').objects.filter(**filters)
             )
         )
-  
+    
     def with_trait_values(self, custom_filters: dict):
         filters = {'content__status__in': ['accepted']}
         filters.update(custom_filters)
@@ -42,7 +43,7 @@ class PlantQuerySet(QuerySet):
                 ).filter(**filters)
             )
         )
-  
+    
     def with_natural_occurrence_regions(self, custom_filters: dict):
         filters = {'content__status__in': ['accepted']}
         filters.update(custom_filters)
@@ -53,7 +54,7 @@ class PlantQuerySet(QuerySet):
                 queryset=apps.get_model('catalog', 'NaturalOccurrenceRegion').objects.filter(**filters)
             )
         )
-  
+    
     def with_invasion_risk_regions(self, custom_filters: dict):
         filters = {'content__status__in': ['accepted']}
         filters.update(custom_filters)
@@ -65,22 +66,6 @@ class PlantQuerySet(QuerySet):
             )
         )
 
-class PopularNameQuerySet(QuerySet):
-    def denormalized(self):
-        return self.select_related(
-            'content',
-            'content__proposer',
-            'content__source',
-        )
-
-class TaxonQuerySet(QuerySet):
-    def denormalized(self):
-        return self.select_related(
-            'content',
-            'content__proposer',
-            'content__source',
-        )
-
 class TraitQuerySet(QuerySet):
     def denormalized(self):
         return self.select_related(
@@ -90,12 +75,9 @@ class TraitQuerySet(QuerySet):
             'text_value_options',
         )
 
-class TraitValueQuerySet(QuerySet):
+class TraitValueQuerySet(ContentQuerySet):
     def denormalized(self):
-        return self.select_related(
-            'content',
-            'content__proposer',
-            'content__source',
+        return super().denormalized().select_related(
             'trait',
             'trait__name_text',
             'trait__section_text',
@@ -103,49 +85,53 @@ class TraitValueQuerySet(QuerySet):
             'texts',
             'trait__text_value_options',
         )
+    
+    def only_important_fields(self):
+        return self.only(
+            'content_id',
+            'plant_id',
+            'trait_id',
+            'value',
+            'trait__data_type',
+            'trait__schema',
+            'trait__name',
+            'trait__name_text__pt_br',
+            'trait__section',
+            'trait__section_text__pt_br',
+            'trait__numeric_value_min',
+            'trait__numeric_value_max',
+            'trait__text_value_options__pt_br',
+            *ContentQuerySet.get_important_fields(self)
+        )
 
-class NaturalOccurrenceRegionQuerySet(QuerySet):
+class NaturalOccurrenceRegionQuerySet(ContentQuerySet):
     def denormalized(self):
-        return self.select_related(
-            'content',
-            'content__proposer',
-            'content__source',
+        return super().denormalized().select_related(
             'country',
             'country__name_text',
             'state',
             'biome',
             'vegetation_type',
-        ).only(
+        )
+    
+    def only_important_fields(self):
+        return self.only(
+            'content_id',
             'plant_id',
             'country__name_text',
             'state__name',
             'state__code',
+            'state__country_id',
             'biome__name',
+            'biome__country_id',
             'vegetation_type__name',
-            'content__status',
-            'content__proposer__id',
-            'content__proposer__email',
-            'content__proposer__first_name',
-            'content__proposer__last_name',
-            'content__source__id',
-            'content__source__type__is_static',
-            'content__source__type__name_text__pt_br',
-            'content__source__field_values__value',
-            'content__source__field_values__field__schema',
-            'content__source__field_values__field__name_text__pt_br',
-            'content__source__created_at',
-            'content__source__deleted_at',
-            'content__proposed_at',
-            'content__accepted_at',
-            'content__rejected_at',
+            'vegetation_type__country_id',
+            *ContentQuerySet.get_important_fields(self)
         )
 
-class InvasionRiskRegionQuerySet(QuerySet):
+class InvasionRiskRegionQuerySet(ContentQuerySet):
     def denormalized(self):
-        return self.select_related(
-            'content',
-            'content__proposer',
-            'content__source',
+        return super().denormalized().select_related(
             'country',
             'country__name_text',
             'state',
