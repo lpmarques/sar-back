@@ -204,6 +204,24 @@ class ContentView(APIView):
         return Response(content, status=status.HTTP_200_OK)
 
 
+class ContentListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get_content_params(self):
+        params = ContentParamsSerializer(self.request.query_params).data if self.request.query_params else {}
+        if not self.request.user.is_authenticated:
+            params.pop('with_user_endorsement_info')
+
+        return params
+
+    def get_queryset(self, model):
+        query = model.objects
+        if self.get_content_params().get('with_user_endorsement_info'):
+            query = query.with_user_endorsement_info(self.request.user)
+
+        return query
+
+
 class ContentEndorsementView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -240,7 +258,7 @@ class ContentEndorsementView(APIView):
             return Response({'msg': 'Aprovação já removida.'}, status=status.HTTP_400_BAD_REQUEST)
 
         endorsement.deleted_at = Now()
-        endorsement.content.endorsements -= 1
+        endorsement.content.endorsements_count -= 1
         endorsement.content.save()
         endorsement.save()
 

@@ -17,11 +17,21 @@ class ContentQuerySet(QuerySet):
             'content__proposer',
         )
     
+    def with_user_endorsement_info(self, user):
+        return self.prefetch_related(
+            Prefetch(
+                'content__endorsements',
+                queryset=apps.get_model('core', 'ContentEndorsement').objects.active().filter(endorser_id=user.id)
+            )
+        )
+    
     def get_important_fields(self):
         return [
             'content__status',
             'content__source_id',
-            'content__endorsements',
+            'content__endorsements_count',
+            'content__endorsements__id',
+            'content__endorsements__endorser_id',
             'content__proposed_at',
             'content__accepted_at',
             'content__rejected_at',

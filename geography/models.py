@@ -128,8 +128,6 @@ class State(models.Model):
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
 
-    biomes = models.ManyToManyField(Biome, through='VegetationArea')
-
     class Meta:
         managed = True
         db_table = '"geography"."states"'
@@ -156,9 +154,6 @@ class VegetationType(models.Model):
     country = models.ForeignKey(Country, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
-
-    states = models.ManyToManyField(State, through=VegetationArea)
-    biomes = models.ManyToManyField(Biome, through=VegetationArea)
 
     class Meta:
         managed = True

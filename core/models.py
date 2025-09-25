@@ -18,7 +18,7 @@ class Content(models.Model):
     proposer_comment = models.CharField(max_length=300, blank=True, null=True)
     rejector_comment = models.CharField(max_length=300, blank=True, null=True)
     source = models.ForeignKey('Source', models.DO_NOTHING, blank=True, null=True, related_name="contents")
-    endorsements = models.IntegerField(db_default=0)
+    endorsements_count = models.IntegerField(db_default=0)
     proposed_at = models.DateTimeField(db_default=Now())
     accepted_at = models.DateTimeField(blank=True, null=True)
     rejected_at = models.DateTimeField(blank=True, null=True)
@@ -29,7 +29,7 @@ class Content(models.Model):
 
 
 class ContentEndorsement(models.Model):
-    content = models.ForeignKey(Content, models.DO_NOTHING)
+    content = models.ForeignKey('Content', models.DO_NOTHING, related_name="endorsements")
     endorser = models.ForeignKey('User', models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)

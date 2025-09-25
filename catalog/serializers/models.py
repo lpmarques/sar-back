@@ -370,10 +370,10 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
     biome = BiomeSerializer(read_only=True)
     vegetation_type = VegetationTypeSerializer(read_only=True)
     # write
-    country_id = IntegerField(write_only=True, required=True)
-    state_id = IntegerField(write_only=True)
-    biome_id = IntegerField(write_only=True)
-    vegetation_type_id = IntegerField(write_only=True)
+    country_id = IntegerField(write_only=True)
+    state_id = IntegerField(write_only=True, required=False)
+    biome_id = IntegerField(write_only=True, required=False)
+    vegetation_type_id = IntegerField(write_only=True, required=False)
     # both
     plant_id = IntegerField()
 
@@ -385,10 +385,11 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
     }
 
     def validate(self, data):
+        # assert all ids passed exist
         missing_id_errors = []
         for field, model in self.fk_fields_to_models.items():
             try:
-                if field in data:
+                if data.get(field):
                     model.objects.get(id=data[field])
             except ObjectDoesNotExist:
                 missing_id_errors.append(f"Não há objeto cadastrado com o {field} passado.")
@@ -396,6 +397,18 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
         if missing_id_errors:
             raise ValidationError(missing_id_errors)
 
+        # check conditionally required fields
+        brazil = Country.objects.get(name_text__pt_br='Brasil')
+        if data.get('country_id') == brazil.id:
+            missing_required_field_errors = []
+            for field in ['state_id', 'biome_id', 'vegetation_type_id']:
+                if not data.get(field):
+                    missing_required_field_errors.append(f"{field}: campo obrigatório")
+            
+            if missing_required_field_errors:
+                raise ValidationError(missing_required_field_errors)
+
+        # assert data refers to existing vegetation area
         if data.get('vegetation_type_id'):
             matching_vegetation_areas = VegetationArea.objects.filter(
                 country_id=data['country_id'],
@@ -406,6 +419,7 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
             if len(matching_vegetation_areas) == 0:
                 raise ValidationError("Item inconsistente com as áreas de vegetação na base de dados.")
 
+        # assert proposal uniqueness
         matching_occurrence_regions = NaturalOccurrenceRegion.objects.filter(
             plant_id=data['plant_id'],
             country_id=data['country_id'],
@@ -426,9 +440,9 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
             content_id = content.id,
             plant_id = validated_data['plant_id'],
             country_id=validated_data['country_id'],
-            state_id=validated_data['state_id'],
-            biome_id=validated_data['biome_id'],
-            vegetation_type_id=validated_data['vegetation_type_id'],
+            state_id=validated_data.get('state_id'),
+            biome_id=validated_data.get('biome_id'),
+            vegetation_type_id=validated_data.get('vegetation_type_id'),
         )
 
     class Meta(ContentSerializer.Meta):

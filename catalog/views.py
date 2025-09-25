@@ -5,7 +5,8 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from core.views import ContentView
+from core.serializers import ContentParamsSerializer
+from core.views import ContentListView, ContentView
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, TraitValue
 from catalog.serializers.models import *
 from catalog.serializers.parameters import *
@@ -29,7 +30,7 @@ class PlantView(APIView):
         return query
 
     def get(self, request, plant_id):
-        params = PlantParamsSerializer(request.query_params)
+        params = PlantParamsSerializer(request.query_params).data
 
         try:
             plant = self.get_queryset().get(id=plant_id)
@@ -37,7 +38,7 @@ class PlantView(APIView):
             content = {'msg': 'Planta não encontrada.'}
             return Response(content, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = PlantSerializer(plant, params=params.data)
+        serializer = PlantSerializer(plant, params=params)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -47,7 +48,11 @@ class PlantListView(PlantView):
         filters = PlantParamsSerializer(self.fetch_filter_params(request.query_params, 'plant')).data
         plants = self.get_queryset().filter(**filters)
 
-        serializer = PlantSerializer(plants, many=True, params=PlantParamsSerializer(request.query_params).data)
+        serializer = PlantSerializer(
+            plants,
+            many=True,
+            params=PlantParamsSerializer(request.query_params).data
+        )
 
         return Response(serializer.data, status=status.HTTP_200_OK)
     
@@ -86,7 +91,7 @@ class TraitValueView(ContentView):
     serializer_class = TraitValueSerializer
 
 
-class PlantTraitValueListView(APIView):
+class PlantTraitValueListView(ContentListView):
     permission_classes = [AllowAny]
 
     def get(self, request, plant_id):
@@ -94,13 +99,14 @@ class PlantTraitValueListView(APIView):
         filters.update({'plant_id': plant_id})
 
         try:
-            plant = Plant.objects.get(id=plant_id)
-            trait_values = TraitValue.objects.denormalized().filter(**filters)
+            Plant.objects.get(id=plant_id)
         except Plant.DoesNotExist:
             content = {'msg': 'Planta não cadastrada'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = TraitValueSerializer(trait_values, many=True)
+        trait_values = super().get_queryset(TraitValue).denormalized().filter(**filters)
+
+        serializer = TraitValueSerializer(trait_values, many=True, content_params=super().get_content_params())
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -110,17 +116,17 @@ class PopularNameView(ContentView):
     serializer_class = PopularNameSerializer
 
 
-class PopularNameListView(APIView):
+class PopularNameListView(ContentListView):
     permission_classes = [AllowAny]
     
     def get_queryset(self):
         filters = PopularNameParamsSerializer(self.request.query_params).data
 
-        return PopularName.objects.filter(**filters)
+        return super().get_queryset(PopularName).filter(**filters)
 
     def get(self, request):
         popular_names = self.get_queryset().denormalized()
-        serializer = PopularNameSerializer(popular_names, many=True)
+        serializer = PopularNameSerializer(popular_names, many=True, content_params=super().get_content_params())
 
         return Response(serializer.data, status=status.HTTP_200_OK)
     
@@ -134,7 +140,7 @@ class PlantPopularNameListView(PopularNameListView):
             content = {'msg': 'Planta não cadastrada'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = PopularNameSerializer(popular_names, many=True)
+        serializer = PopularNameSerializer(popular_names, many=True, content_params=super().get_content_params())
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -144,17 +150,17 @@ class TaxonView(ContentView):
     serializer_class = TaxonSerializer
 
 
-class TaxonListView(APIView):
+class TaxonListView(ContentListView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
         filters = TaxonParamsSerializer(self.request.query_params).data
 
-        return Taxon.objects.filter(**filters)
+        return super().get_queryset(Taxon).filter(**filters)
 
     def get(self, request):
         taxa = self.get_queryset().denormalized()
-        serializer = TaxonSerializer(taxa, many=True)
+        serializer = TaxonSerializer(taxa, many=True, content_params=super().get_content_params())
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -168,7 +174,7 @@ class PlantTaxonListView(TaxonListView):
             content = {'msg': 'Planta não cadastrada'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
         
-        serializer = TaxonSerializer(taxa, many=True)
+        serializer = TaxonSerializer(taxa, many=True, content_params=super().get_content_params())
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -178,12 +184,12 @@ class NaturalOccurrenceRegionView(ContentView):
     serializer_class = NaturalOccurrenceRegionSerializer
 
 
-class NaturalOccurrenceRegionListView(APIView):
+class NaturalOccurrenceRegionListView(ContentListView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
         filters = NaturalOccurrenceRegionParamsSerializer(self.request.query_params).data
-        return NaturalOccurrenceRegion.objects.denormalized().only_important_fields().filter(**filters)
+        return super().get_queryset(NaturalOccurrenceRegion).denormalized().only_important_fields().filter(**filters)
         
     def get(self, request):
         natural_occurrence_regions = self.get_queryset().values(
@@ -192,7 +198,7 @@ class NaturalOccurrenceRegionListView(APIView):
             'biome__name',
             'vegetation_type__name'
         ).annotate(plant_ids=ArrayAgg("plant_id"))
-        serializer = NaturalOccurrenceRegionSerializer(natural_occurrence_regions, many=True)
+        serializer = NaturalOccurrenceRegionSerializer(natural_occurrence_regions, many=True, content_params=super().get_content_params())
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -206,6 +212,6 @@ class PlantNaturalOccurrenceRegionListView(NaturalOccurrenceRegionListView):
             content = {'msg': 'Planta não cadastrada'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = NaturalOccurrenceRegionSerializer(natural_occurrence_regions, many=True)
+        serializer = NaturalOccurrenceRegionSerializer(natural_occurrence_regions, many=True, content_params=super().get_content_params())
 
         return Response(serializer.data, status=status.HTTP_200_OK)

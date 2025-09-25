@@ -1,5 +1,5 @@
 from django.db.models import Prefetch, Q
-from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, IntegerField, JSONField, ModelSerializer, Serializer, ValidationError
+from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, IntegerField, JSONField, ModelSerializer, Serializer, SerializerMethodField, ValidationError
 from core.models import Content, ContentEndorsement, Source, SourceField, SourceFieldValue, SourceType, User
 from jsonschema import validate, FormatChecker
 import json
@@ -235,11 +235,14 @@ class UserTokenCreationSerializer(Serializer):
     email = EmailField(max_length=255)
     password = CharField(max_length=128)
 
+class ContentParamsSerializer(Serializer):
+    with_user_endorsement_info = BooleanField(required=False)
+
 class ContentSerializer(ModelSerializer):
     # read
     content_status = CharField(read_only=True, source='content.status')
     content_proposer = UserPreviewSerializer(read_only=True, source='content.proposer')
-    endorsements = IntegerField(read_only=True, source='content.endorsements')
+    endorsements_count = IntegerField(read_only=True, source='content.endorsements_count')
     proposed_at = DateTimeField(read_only=True, source='content.proposed_at')
     accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
     rejected_at = DateTimeField(read_only=True, source='content.rejected_at')
@@ -248,6 +251,23 @@ class ContentSerializer(ModelSerializer):
     content_proposer_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     # both
     source_id = IntegerField(required=True, source='content.source_id')
+    
+    def __init__(self,  *args, **kwargs):
+        params = kwargs.pop('content_params', {})
+        if params.get('with_user_endorsement_info'):
+            self.fields['is_endorsed_by_user'] = BooleanField(read_only=True)
+            self.fields['user_endorsement_id'] = IntegerField(read_only=True)
+
+        super().__init__(*args, **kwargs)
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        if 'is_endorsed_by_user' in self.fields:
+            user_endorsements = obj.content.endorsements.active()
+            data['is_endorsed_by_user'] = True if user_endorsements else False
+            data['user_endorsement_id'] = user_endorsements[0].id if user_endorsements else None
+
+        return data
 
     def to_internal_value(self, data):
         return data # must skip default method to avoid source_id nesting on write
@@ -269,11 +289,14 @@ class ContentSerializer(ModelSerializer):
             'content_proposer',
             'content_proposer_id',
             'content_proposer_comment',
-            'endorsements',
+            'endorsements_count',
             'proposed_at',
             'accepted_at',
             'rejected_at',
         ]
+
+class ContentEndorsementParamsSerializer(Serializer):
+    content_id = IntegerField(required=False)
 
 class ContentEndorsementSerializer(ModelSerializer):
     # read
@@ -302,7 +325,7 @@ class ContentEndorsementSerializer(ModelSerializer):
     def create(self, validated_data):
         endorsement = ContentEndorsement.objects.create(**validated_data)
 
-        endorsement.content.endorsements += 1
+        endorsement.content.endorsements_count += 1
         endorsement.content.save()
 
         return endorsement
@@ -325,6 +348,3 @@ class UserContentEndorsementSerializer(ContentEndorsementSerializer):
             'content_id',
             'created_at',
         ]
-
-class ContentEndorsementParamsSerializer(Serializer):
-    content_id = IntegerField(required=False)
