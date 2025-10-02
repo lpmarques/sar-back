@@ -1,5 +1,5 @@
 from django.core.exceptions import ObjectDoesNotExist
-from rest_framework.serializers import CharField, DateTimeField, IntegerField, ListField, ModelSerializer, Serializer, SerializerMethodField, SlugRelatedField, ValidationError
+from rest_framework.serializers import CharField, IntegerField, JSONField, ModelSerializer, SerializerMethodField, SlugRelatedField, ValidationError
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, Trait, TraitValue
 from core.models import Text
 from core.serializers import ContentSerializer
@@ -14,6 +14,7 @@ pg_to_json_type = {
     'varchar[]': 'string[]',
     'varchar': 'string',
     'integer': 'number',
+    'decimal': 'number',
     'boolean': 'boolean'
 }
 
@@ -65,8 +66,13 @@ class TraitValueSerializer(ContentSerializer):
     boundaries = SerializerMethodField()
     # both
     value = CharField()
-    trait_id = IntegerField(required=True)
-    plant_id = IntegerField(required=True)
+    trait_id = IntegerField()
+    plant_id = IntegerField()
+
+    def __init__(self,  *args, **kwargs):
+        kwargs['content_type'] = "trait_value"
+
+        super().__init__(*args, **kwargs)
 
     def get_type(self, obj):
         return pg_to_json_type.get(obj.trait.data_type)
@@ -166,7 +172,7 @@ class TraitValueSerializer(ContentSerializer):
         return data
 
     def create(self, validated_data):
-        content = super().create(validated_data, "trait_value")
+        content = super().create(validated_data)
         
         trait_value = TraitValue.objects.create(
             content_id = content.id,
@@ -182,7 +188,7 @@ class TraitValueSerializer(ContentSerializer):
 
     class Meta(ContentSerializer.Meta):
         model = TraitValue
-        fields = ContentSerializer.Meta.fields + [
+        fields = [
             'content_id',
             'plant_id',
             'trait_id',
@@ -193,13 +199,14 @@ class TraitValueSerializer(ContentSerializer):
             'type',
             'value',
             'boundaries',
-        ]
+        ] + ContentSerializer.Meta.fields
 
 class TraitValuePreviewSerializer(TraitValueSerializer):
     class Meta:
         model = TraitValue
         fields = [
             'content_id',
+            'content_status',
             'trait_slug',
             'trait_name',
             'type',
@@ -225,6 +232,11 @@ class TaxonSerializer(ContentSerializer):
         'subspecies': r'^[a-z]{2,}$',
         'variety': r'^[a-z]{2,}$',
     }
+
+    def __init__(self,  *args, **kwargs):
+        kwargs['content_type'] = "taxon"
+
+        super().__init__(*args, **kwargs)
     
     def to_internal_value(self, data):
         data = super().to_internal_value(data)
@@ -270,7 +282,7 @@ class TaxonSerializer(ContentSerializer):
         return data
 
     def create(self, validated_data):
-        content = super().create(validated_data, "taxon")
+        content = super().create(validated_data)
         
         return Taxon.objects.create(
             content_id = content.id,
@@ -285,7 +297,7 @@ class TaxonSerializer(ContentSerializer):
 
     class Meta:
         model = Taxon
-        fields = ContentSerializer.Meta.fields + [
+        fields = [
             'content_id',
             'plant_id',
             'family',
@@ -294,13 +306,14 @@ class TaxonSerializer(ContentSerializer):
             'subspecies',
             'variety',
             'taxonomic_status',
-        ]
+        ] + ContentSerializer.Meta.fields
 
 class TaxonPreviewSerializer(TaxonSerializer):
     class Meta:
         model = Taxon
         fields = [
             'content_id',
+            'content_status',
             'family',
             'genus',
             'species',
@@ -319,6 +332,11 @@ class PopularNameSerializer(ContentSerializer):
     patterns = {
         'name': r'^[-a-z]+$',
     }
+
+    def __init__(self,  *args, **kwargs):
+        kwargs['content_type'] = "popular_name"
+
+        super().__init__(*args, **kwargs)
 
     def to_internal_value(self, data):
         data['name'] = none_if_empty(data.get('name',"").lower())
@@ -346,7 +364,7 @@ class PopularNameSerializer(ContentSerializer):
         return data
 
     def create(self, validated_data):
-        content = super().create(validated_data, "popular_name")
+        content = super().create(validated_data)
         
         return PopularName.objects.create(
             content_id = content.id,
@@ -356,11 +374,12 @@ class PopularNameSerializer(ContentSerializer):
 
     class Meta(ContentSerializer.Meta):
         model = PopularName
-        fields = ContentSerializer.Meta.fields + [
+        fields = [
             'content_id',
+            'content_status',
             'plant_id',
             'name',
-        ]
+        ] + ContentSerializer.Meta.fields
 
 class NaturalOccurrenceRegionSerializer(ContentSerializer):
     # read
@@ -383,6 +402,11 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
         'biome_id': Biome,
         'vegetation_type_id': VegetationType,
     }
+
+    def __init__(self,  *args, **kwargs):
+        kwargs['content_type'] = "natural_occurrence_region"
+
+        super().__init__(*args, **kwargs)
 
     def validate(self, data):
         # assert all ids passed exist
@@ -434,7 +458,7 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
         return data
 
     def create(self, validated_data):
-        content = super().create(validated_data, "popular_name")
+        content = super().create(validated_data)
         
         return NaturalOccurrenceRegion.objects.create(
             content_id = content.id,
@@ -447,7 +471,7 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
 
     class Meta(ContentSerializer.Meta):
         model = NaturalOccurrenceRegion
-        fields = ContentSerializer.Meta.fields + [
+        fields = [
             'content_id',
             'plant_id',
             'country',
@@ -458,13 +482,14 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
             'state_id',
             'biome_id',
             'vegetation_type_id',
-        ]
+        ] + ContentSerializer.Meta.fields
 
 class NaturalOccurrenceRegionPreviewSerializer(NaturalOccurrenceRegionSerializer):
     class Meta:
         model = NaturalOccurrenceRegion
         fields = [
             'content_id',
+            'content_status',
             'country',
             'state',
             'biome',
@@ -472,7 +497,20 @@ class NaturalOccurrenceRegionPreviewSerializer(NaturalOccurrenceRegionSerializer
         ]
 
 class PlantSerializer(ContentSerializer):
+    # read
+    id = IntegerField(read_only=True)
+    content_id = IntegerField(read_only=True)
+    # both
+    accepted_taxon_name = CharField(required=False)
+    accepted_family_name = CharField(required=False)
+    color_hex = CharField(required=False)
+    # write -- only for validation of required fields on POST
+    taxon = JSONField(write_only=True)
+    popular_name = JSONField(write_only=True)
+
     def __init__(self,  *args, **kwargs):
+        kwargs['content_type'] = "plant"
+
         params = kwargs.pop('params', {})
         if params.get('with_taxa'):
             self.fields['taxa'] = TaxonPreviewSerializer(many=True, read_only=True)
@@ -485,15 +523,26 @@ class PlantSerializer(ContentSerializer):
 
         super().__init__(*args, **kwargs)
 
-    class Meta:
+    def create(self, validated_data):
+        content = super().create(validated_data)
+
+        plant = Plant.objects.create(
+            content_id = content.id,
+            accepted_taxon_name = validated_data.get('accepted_taxon_name'),
+            accepted_family_name = validated_data.get('accepted_family_name'),
+            color_hex = validated_data.get('color_hex'),
+        )
+
+        return plant        
+
+    class Meta(ContentSerializer.Meta):
         model = Plant
         fields = [
             'id',
             'content_id',
             'accepted_taxon_name',
             'accepted_family_name',
-            'content_status',
-            'proposed_at',
-            'accepted_at',
-            'rejected_at',
-        ]
+            'color_hex',
+            'taxon',
+            'popular_name',
+        ] + ContentSerializer.Meta.fields
