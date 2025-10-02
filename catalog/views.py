@@ -5,14 +5,20 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from core.serializers import ContentParamsSerializer
 from core.views import ContentListView, ContentView
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, TraitValue
 from catalog.serializers.models import *
 from catalog.serializers.parameters import *
+from catalog.utils import md5_to_color, string_to_md5
 
-class PlantView(APIView):
-    permission_classes = [AllowAny]
+class PlantView(ContentView):
+    serializer_class = PlantSerializer
+    
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [AllowAny()]
+
+        return [IsAuthenticated()]
 
     def fetch_filter_params(self, params_data: dict, related_name: str):
         return { key.replace(f'{related_name}_', ''): value for key, value in params_data.items() if f'{related_name}_' in key }
@@ -20,7 +26,7 @@ class PlantView(APIView):
     def get_queryset(self):
         params = PlantParamsSerializer(self.request.query_params).data
 
-        query = Plant.objects.denormalized()
+        query = Plant.objects.denormalized().filter(**self.fetch_filter_params(params, 'plant'))
         query = query.with_popular_names(PopularNameParamsSerializer(self.fetch_filter_params(params, 'popular_names')).data) if params.get('with_popular_names') else query
         query = query.with_taxa(TaxonParamsSerializer(self.fetch_filter_params(params, 'taxa')).data) if params.get('with_taxa') else query
         query = query.with_trait_values(TraitValueParamsSerializer(self.fetch_filter_params(params, 'trait_values')).data) if params.get('with_trait_values') else query
@@ -42,11 +48,62 @@ class PlantView(APIView):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    def post(self, request):
+        data = request.data
+        data.update({'content_proposer_id': request.user.id})
+
+        # create plant
+        plant_serializer = PlantSerializer(data=data)
+        plant_res = self.validate_and_save_serializer(plant_serializer)
+        if isinstance(plant_res, Response):
+            return plant_res
+
+        # create taxon
+        taxon_serializer = TaxonSerializer(data=dict(data['taxon'], **{
+            'taxonomic_status': 'accepted',
+            'content_proposer_id': request.user.id,
+            'plant_id': plant_res.id,
+        }))
+        taxon_res = self.validate_and_save_serializer(taxon_serializer)
+        if isinstance(taxon_res, Response):
+            return taxon_res
+
+        # create popular_name
+        popular_name_serializer = PopularNameSerializer(data=dict(data['popular_name'], **{
+            'content_proposer_id': request.user.id,
+            'plant_id': plant_res.id,
+        }))
+        popular_name_res = self.validate_and_save_serializer(popular_name_serializer)
+        if isinstance(popular_name_res, Response):
+            return popular_name_res
+        
+        # update plant with taxonomic data
+        accepted_taxon_name = (
+            f"{taxon_res.species}" +
+            (f" subsp. {taxon_res.subspecies}" if taxon_res.subspecies else "") +
+            (f" var. {taxon_res.variety}" if taxon_res.variety else "")
+        )
+        plant_serializer = PlantSerializer(plant_res, partial=True, data={
+            'accepted_taxon_name': accepted_taxon_name,
+            'accepted_family_name': taxon_res.family,
+            'color_hex': md5_to_color(string_to_md5(accepted_taxon_name)),
+        })
+        plant_res = self.validate_and_save_serializer(plant_serializer)
+        if isinstance(plant_res, Response):
+            return plant_res
+
+        content = {
+            'plant_id': plant_res.id,
+            'content_id': plant_res.content_id,
+            'msg': 'Proposta cadastrada com sucesso.'
+        }
+    
+        return Response(content, status=status.HTTP_201_CREATED)
+
 
 class PlantListView(PlantView):
     def get(self, request):
-        filters = PlantParamsSerializer(self.fetch_filter_params(request.query_params, 'plant')).data
-        plants = self.get_queryset().filter(**filters)
+        plants = self.get_queryset()
 
         serializer = PlantSerializer(
             plants,

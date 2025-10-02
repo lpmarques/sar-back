@@ -13,7 +13,9 @@ class PlantQuerySet(ContentQuerySet):
         return self.prefetch_related(
             Prefetch(
                 'popular_names',
-                queryset=apps.get_model('catalog', 'PopularName').objects.filter(**filters)
+                queryset=apps.get_model('catalog', 'PopularName').objects.select_related(
+                    'content',
+                ).filter(**filters)
             ),
         )
 
@@ -24,7 +26,9 @@ class PlantQuerySet(ContentQuerySet):
         return self.prefetch_related(
             Prefetch(
                 'taxa',
-                queryset=apps.get_model('catalog', 'Taxon').objects.filter(**filters)
+                queryset=apps.get_model('catalog', 'Taxon').objects.select_related(
+                    'content',
+                ).filter(**filters)
             )
         )
     
@@ -36,6 +40,7 @@ class PlantQuerySet(ContentQuerySet):
             Prefetch(
                 'trait_values',
                 queryset=apps.get_model('catalog', 'TraitValue').objects.select_related(
+                    'content',
                     'trait',
                     'trait__name_text',
                 ).prefetch_related(
@@ -51,7 +56,9 @@ class PlantQuerySet(ContentQuerySet):
         return self.prefetch_related(
             Prefetch(
                 'natural_occurrence_regions',
-                queryset=apps.get_model('catalog', 'NaturalOccurrenceRegion').objects.filter(**filters)
+                queryset=apps.get_model('catalog', 'NaturalOccurrenceRegion').objects.select_related(
+                    'content',
+                ).filter(**filters)
             )
         )
     
@@ -62,7 +69,9 @@ class PlantQuerySet(ContentQuerySet):
         return self.prefetch_related(
             Prefetch(
                 'invasion_risk_regions',
-                queryset=apps.get_model('catalog', 'InvasionRiskRegion').objects.filter(**filters)
+                queryset=apps.get_model('catalog', 'InvasionRiskRegion').objects.select_related(
+                    'content',
+                ).filter(**filters)
             )
         )
 

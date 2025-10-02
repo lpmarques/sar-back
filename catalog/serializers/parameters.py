@@ -26,6 +26,7 @@ class NaturalOccurrenceRegionParamsSerializer(Serializer):
     vegetation_type__name = CharField(required=False, allow_blank=False, source='vegetation_type')
 
 class TraitParamsSerializer(Serializer):
+    name__in = StringListField(required=False, allow_null=False, source='trait_slugs')
     section__in = StringListField(required=False, allow_null=False, source='section_slugs')
 
 class TraitValueParamsSerializer(Serializer):
@@ -34,7 +35,7 @@ class TraitValueParamsSerializer(Serializer):
     trait__section__in = StringListField(required=False, allow_null=False, source='section_slugs')
 
 class PlantParamsSerializer(Serializer):
-    content__status__in = StringListField(required=False, allow_null=False, source='status')
+    plant_content__status__in = StringListField(required=False, allow_null=False, source='status')
 
     with_taxa = BooleanField(required=False, allow_null=False)
     with_popular_names = BooleanField(required=False, allow_null=False)

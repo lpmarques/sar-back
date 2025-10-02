@@ -247,14 +247,16 @@ class ContentSerializer(ModelSerializer):
     accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
     rejected_at = DateTimeField(read_only=True, source='content.rejected_at')
     # write
-    content_proposer_id = IntegerField(write_only=True, required=True)
+    content_proposer_id = IntegerField(write_only=True)
     content_proposer_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     # both
-    source_id = IntegerField(required=True, source='content.source_id')
+    source_id = IntegerField(required=False, source='content.source_id')
     
     def __init__(self,  *args, **kwargs):
-        params = kwargs.pop('content_params', {})
-        if params.get('with_user_endorsement_info'):
+        self.content_type = kwargs.pop('content_type')
+
+        self.params = kwargs.pop('content_params', {})
+        if self.params.get('with_user_endorsement_info'):
             self.fields['is_endorsed_by_user'] = BooleanField(read_only=True)
             self.fields['user_endorsement_id'] = IntegerField(read_only=True)
 
@@ -262,8 +264,8 @@ class ContentSerializer(ModelSerializer):
 
     def to_representation(self, obj):
         data = super().to_representation(obj)
-        if 'is_endorsed_by_user' in self.fields:
-            user_endorsements = obj.content.endorsements.active()
+        if self.params.get('with_user_endorsement_info'):
+            user_endorsements = obj.content.endorsements.all() # user-specific endorsements (prefetched on queryset)
             data['is_endorsed_by_user'] = True if user_endorsements else False
             data['user_endorsement_id'] = user_endorsements[0].id if user_endorsements else None
 
@@ -271,11 +273,17 @@ class ContentSerializer(ModelSerializer):
 
     def to_internal_value(self, data):
         return data # must skip default method to avoid source_id nesting on write
+    
+    def validate(self, data):
+        if self.content_type != 'plant' and not data.get('source_id'):
+            raise ValidationError("O campo 'source_id' é obrigatório.")
+        
+        return data
 
-    def create(self, validated_data, content_type):
+    def create(self, validated_data):
         return Content.objects.create(
             status = 'proposed',
-            type = content_type,
+            type = self.content_type,
             source_id = validated_data.get('source_id'),
             proposer_id = validated_data.get('content_proposer_id'),
             proposer_comment = validated_data.get('content_proposer_comment'),
@@ -304,7 +312,7 @@ class ContentEndorsementSerializer(ModelSerializer):
     endorser = UserPreviewSerializer(read_only=True)
     created_at = DateTimeField(read_only=True)
     # write
-    endorser_id = IntegerField(write_only=True, required=True)
+    endorser_id = IntegerField(write_only=True)
     # both
     content_id = IntegerField()
 

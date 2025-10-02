@@ -2,6 +2,8 @@ from django.urls import include, path
 from . import views
 
 urlpatterns = [
+    path('plant', views.PlantView.as_view()),
+    path('plant/<int:content_id>', views.PlantView.as_view()),
     path('plants', views.PlantListView.as_view()),
     path('plants/<int:plant_id>', views.PlantView.as_view()),
     path('plants/<int:plant_id>/taxa', views.PlantTaxonListView.as_view()),
@@ -14,7 +16,7 @@ urlpatterns = [
     path('trait-value/<int:content_id>', views.TraitValueView.as_view()),
     path('taxon', views.TaxonView.as_view()),
     path('taxon/<int:content_id>', views.TaxonView.as_view()),
-    # path('taxa', views.TaxonListView.as_view()),
+    path('taxa', views.TaxonListView.as_view()),
     path('popular-name', views.PopularNameView.as_view()),
     path('popular-name/<int:content_id>', views.PopularNameView.as_view()),
     # path('popular-names', views.PopularNameListView.as_view()),

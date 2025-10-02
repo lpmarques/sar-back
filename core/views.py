@@ -161,25 +161,32 @@ class UserTokenView(APIView):
 class ContentView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def validate_and_save_serializer(self, serializer: ModelSerializer):
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            object = serializer.save()
+        except Exception as err:
+            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return object
+
     def post(self, request):
         data = request.data
         data.update({'content_proposer_id': request.user.id})
         serializer = self.serializer_class(data=data)
 
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            object = serializer.save()
-        except Exception as err:
-            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        object_res = self.validate_and_save_serializer(serializer)
+        if isinstance(object, Response):
+            return object_res
 
         content = {
-            'content_id': object.content_id,
+            'content_id': object_res.content_id,
             'msg': 'Proposta cadastrada com sucesso.'
         }
-    
-        return Response(content, status=status.HTTP_201_CREATED)
+
+        return Response(content, status=status.HTTP_200_OK)
     
     def delete(self, request, content_id):
         try:
@@ -210,7 +217,7 @@ class ContentListView(APIView):
     def get_content_params(self):
         params = ContentParamsSerializer(self.request.query_params).data if self.request.query_params else {}
         if not self.request.user.is_authenticated:
-            params.pop('with_user_endorsement_info')
+            params.pop('with_user_endorsement_info', {})
 
         return params
 
