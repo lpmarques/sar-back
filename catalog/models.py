@@ -6,7 +6,7 @@ from core.querysets import ContentQuerySet
 from geography.models import Biome, Country, State, VegetationType
 
 class Plant(models.Model):
-    content = models.ForeignKey(Content, models.DO_NOTHING)
+    content = models.OneToOneField(Content, models.DO_NOTHING)
     accepted_taxon_name = models.CharField(unique=True, blank=True, null=True)
     accepted_family_name = models.CharField(blank=True, null=True)
     color_hex = models.CharField(unique=True, blank=True, null=True)
@@ -24,7 +24,7 @@ class InvasionRiskRegion(models.Model):
         MR = "Major", "major"
         MV = "Massive", "massive"
 
-    content = models.ForeignKey(Content, models.DO_NOTHING)
+    content = models.OneToOneField(Content, models.DO_NOTHING)
     taxon_name = models.CharField()
     plant = models.ForeignKey(Plant, models.DO_NOTHING, blank=True, null=True, related_name='invasion_risk_regions')
     country = models.ForeignKey(Country, models.DO_NOTHING)
@@ -40,7 +40,7 @@ class InvasionRiskRegion(models.Model):
 
 
 class NaturalOccurrenceRegion(models.Model):
-    content = models.ForeignKey(Content, models.DO_NOTHING)
+    content = models.OneToOneField(Content, models.DO_NOTHING)
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='natural_occurrence_regions')
     country = models.ForeignKey(Country, models.DO_NOTHING)
     state = models.ForeignKey(State, models.DO_NOTHING, blank=True, null=True)
@@ -55,7 +55,7 @@ class NaturalOccurrenceRegion(models.Model):
 
 
 class PopularName(models.Model):
-    content = models.ForeignKey(Content, models.DO_NOTHING)
+    content = models.OneToOneField(Content, models.DO_NOTHING)
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='popular_names')
     name = models.CharField()
 
@@ -71,7 +71,7 @@ class Taxon(models.Model):
         ACC = "accepted"
         SYN = "synonym"
 
-    content = models.ForeignKey(Content, models.DO_NOTHING)
+    content = models.OneToOneField(Content, models.DO_NOTHING)
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='taxa')
     family = models.CharField()
     genus = models.CharField()
@@ -125,7 +125,7 @@ class TraitTextValueOption(models.Model):
 
 
 class TraitValue(models.Model):
-    content = models.ForeignKey(Content, models.DO_NOTHING, related_name='trait_value')
+    content = models.OneToOneField(Content, models.DO_NOTHING, related_name='trait_value')
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='trait_values')
     trait = models.ForeignKey(Trait, models.DO_NOTHING)
     value = models.CharField()

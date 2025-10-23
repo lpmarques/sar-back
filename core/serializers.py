@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import Prefetch, Q
 from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, IntegerField, JSONField, ModelSerializer, Serializer, SerializerMethodField, ValidationError
 from core.models import Content, ContentEndorsement, Source, SourceField, SourceFieldValue, SourceType, User
@@ -44,12 +45,12 @@ class SourceFieldValueSerializer(ModelSerializer):
         try:
             field = SourceField.objects.denormalized().active().get(id=field_id)
         except SourceField.DoesNotExist:
-            raise ValidationError(f"Não há campo cadastrado com esse id: {field_id}")
+            raise ValidationError({'field_id': f"Não há campo cadastrado com o id {field_id}."})
 
         try:
             validate(value, field.schema, format_checker=FormatChecker())
         except Exception as e:
-            raise ValidationError(f"Valor inválido para o campo '{field.name_text.pt_br}' (field_id: {field_id})': {e}")
+            raise ValidationError({'value': f"Valor inválido para o campo '{field.name_text.pt_br}' (field_id: {field_id})': {e}"})
 
         if field.schema['type'] != "string":
             data['value'] = json.dumps(value)
@@ -83,16 +84,15 @@ class SourceSerializer(ModelSerializer):
     def validate_required_fields(self, data, type_fields):
         required_fields = type_fields.filter(is_nullable=False)
         passed_field_ids = [item['field_id'] for item in data['field_values']]
-        missing_req_fields = []
+        missing_req_field_errors = []
         for req in required_fields:
             if req.id not in passed_field_ids:
-                missing_req_fields.append({
-                    "field_id": req.id,
-                    "name": req.name_text.pt_br
+                missing_req_field_errors.append({
+                    'field_values': f"Campo '{req.name_text.pt_br}' obrigatório (field_id: {req.id})."
                 })
 
-        if missing_req_fields:
-            raise ValidationError(f"Há campos obrigatórios faltando: {missing_req_fields}")
+        if missing_req_field_errors:
+            raise ValidationError(missing_req_field_errors)
 
     def validate_uniqueness(self, data, type, type_fields):
         type_sources = Source.objects.active().filter(
@@ -116,7 +116,7 @@ class SourceSerializer(ModelSerializer):
         for source in type_sources:
             source_field_values = [{'field_id': item.field_id, 'value': item.value} for item in source.field_values.all()]
             if data['field_values'] == source_field_values and (type.is_static or source.creator_id == data['creator_id']):
-                raise ValidationError(f"Já existe outra fonte cadastrada com os mesmos dados: [{source.id}].")
+                raise ValidationError({'non_field_errors': f"Já existe outra fonte cadastrada com os mesmos dados: [{source.id}]."})
 
     def validate(self, data):
         type = SourceType.objects.active().get(id=data['type_id'])
@@ -132,21 +132,22 @@ class SourceSerializer(ModelSerializer):
         return data
 
     def create(self, validated_data):
-        source = Source.objects.create(
-            type_id = validated_data['type_id'],
-            creator_id = validated_data['creator_id'],
-            creator_notes = validated_data.get('creator_notes'),
-        )
+        with transaction.atomic():
+            source = Source.objects.create(
+                type_id = validated_data['type_id'],
+                creator_id = validated_data['creator_id'],
+                creator_notes = validated_data.get('creator_notes'),
+            )
 
-        SourceFieldValue.objects.bulk_create([
-            SourceFieldValue(
-                source_id = source.id,
-                field_id = item['field_id'],
-                value = item['value'],
-            ) for item in validated_data['field_values']
-        ])
+            SourceFieldValue.objects.bulk_create([
+                SourceFieldValue(
+                    source_id = source.id,
+                    field_id = item['field_id'],
+                    value = item['value'],
+                ) for item in validated_data['field_values']
+            ])
 
-        return source
+            return source
 
     class Meta:
         model = Source
@@ -276,7 +277,7 @@ class ContentSerializer(ModelSerializer):
     
     def validate(self, data):
         if self.content_type != 'plant' and not data.get('source_id'):
-            raise ValidationError("O campo 'source_id' é obrigatório.")
+            raise ValidationError({'source_id': "Campo obrigatório."})
         
         return data
 
@@ -320,23 +321,24 @@ class ContentEndorsementSerializer(ModelSerializer):
         try:
             content = Content.objects.get(id=data.get('content_id'))
         except Content.DoesNotExist:
-            raise ValidationError("Não há conteúdo cadastrado com esse content_id.")
+            raise ValidationError({'content_id': "Não há conteúdo cadastrado com esse id."})
         
         if data.get('endorser_id') == content.proposer_id:
-            raise ValidationError("Somente outro usuário pode aprovar conteúdo criado por você.")
+            raise ValidationError({'endorser_id': "Somente outro usuário pode aprovar conteúdo criado por você."})
 
         if ContentEndorsement.objects.active().filter(content_id=data.get('content_id'), endorser_id=data.get('endorser_id')):
-            raise ValidationError("Aprovação já cadastrada.")
+            raise ValidationError({'non_field_errors': "Aprovação já cadastrada."})
 
         return data
         
     def create(self, validated_data):
-        endorsement = ContentEndorsement.objects.create(**validated_data)
+        with transaction.atomic():
+            endorsement = ContentEndorsement.objects.create(**validated_data)
 
-        endorsement.content.endorsements_count += 1
-        endorsement.content.save()
+            endorsement.content.endorsements_count += 1
+            endorsement.content.save()
 
-        return endorsement
+            return endorsement
 
     class Meta:
         model = ContentEndorsement

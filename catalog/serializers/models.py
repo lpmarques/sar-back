@@ -1,9 +1,11 @@
-from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 from rest_framework.serializers import CharField, IntegerField, JSONField, ModelSerializer, SerializerMethodField, SlugRelatedField, ValidationError
+from unidecode import unidecode
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, Trait, TraitValue
+from catalog.utils import md5_to_color, string_to_md5
 from core.models import Text
 from core.serializers import ContentSerializer
-from geography.models import Biome, Country, State, VegetationArea, VegetationType
+from geography.models import Country, VegetationArea
 from geography.serializers import BiomeSerializer, CountrySerializer, StateSerializer, VegetationTypeSerializer
 import json
 import re
@@ -105,13 +107,13 @@ class TraitValueSerializer(ContentSerializer):
     
     def to_internal_value(self, data):
         value = data.get('value')
-        if not value:
-            raise ValidationError("O campo 'value' é obrigatório.")
+        if value is None:
+            raise ValidationError({'value': "Campo obrigatório."})
 
         try:
             trait = Trait.objects.denormalized().get(id=data.get('trait_id'))
         except Trait.DoesNotExist:
-            raise ValidationError("Não há traço cadastrado com esse id.")
+            raise ValidationError({'trait_id': "Não há traço cadastrado com esse id."})
 
         if trait.data_type == "varchar[]":
             self.texts = Text.objects.filter(**{'pt_br__in': value})
@@ -134,7 +136,7 @@ class TraitValueSerializer(ContentSerializer):
         try:
             Plant.objects.get(id=data['plant_id'])
         except Plant.DoesNotExist:
-            raise ValidationError("Não há planta cadastrada com esse id.")
+            raise ValidationError({'plant_id': "Não há planta cadastrada com esse id."})
 
         matching_values = TraitValue.objects.filter(
             plant_id=data['plant_id'],
@@ -143,48 +145,49 @@ class TraitValueSerializer(ContentSerializer):
             value=data['value'],
         )
         if matching_values:
-            raise ValidationError("Valor igual ao aceito ou a um valor já proposto para a mesma planta.")
+            raise ValidationError({'value': "Valor igual ao aceito ou a um valor já proposto para a mesma planta."})
 
         if trait.data_type in ["varchar", "varchar[]"]:
             values = value if trait.data_type == "varchar[]" else [value]
             if len(values) == 0:
-                raise ValidationError("Valor não pode ser vazio.")
+                raise ValidationError({'value': "Valor não pode ser vazio."})
             options = TraitSerializer(trait).data.get('text_value_options')
             for item in values:
                 if item not in options:
-                    raise ValidationError(
-                        f"Valor '{item}' inválido para o traço. Valores permitidos: {json.dumps(options)}"
-                    )
+                    raise ValidationError({
+                        'value': f"Valor '{item}' inválido para o traço. Valores permitidos: {json.dumps(options)}"
+                    })
         # TODO: replace below with json schema validation
         if trait.data_type == "number":
             if value >= trait.numeric_value_min and value <= trait.numeric_value_max:
                 raise ValidationError(
-                    f"Valor '{value}' fora do intervalo permitido para o traço: de {trait.numeric_value_min} até {trait.numeric_value_max}"
+                    {'value': f"Valor '{value}' fora do intervalo permitido para o traço: de {trait.numeric_value_min} até {trait.numeric_value_max}"}
                 )
         if trait.data_type == "range":
             if (value[0] >= value[1]):
-                raise ValidationError("O valor mínimo do intervalo não pode ser inferior ao valor máximo")
+                raise ValidationError({'value': "O valor mínimo do intervalo não pode ser inferior ao valor máximo"})
             if (value[0] < trait.numericValueMin):
-                raise ValidationError(f"O valor mínimo está fora do intervalo permitido para o traço: de {trait.numeric_value_min} até {trait.numeric_value_max}")
+                raise ValidationError({'value': f"O valor mínimo está fora do intervalo permitido para o traço: de {trait.numeric_value_min} até {trait.numeric_value_max}"})
             if (value[1] > trait.numericValueMax):
-                raise ValidationError(f"O valor máximo está fora do intervalo permitido para o traço: de {trait.numeric_value_min} até {trait.numeric_value_max}")
+                raise ValidationError({'value': f"O valor máximo está fora do intervalo permitido para o traço: de {trait.numeric_value_min} até {trait.numeric_value_max}"})
         
         return data
 
     def create(self, validated_data):
-        content = super().create(validated_data)
-        
-        trait_value = TraitValue.objects.create(
-            content_id = content.id,
-            plant_id = validated_data.get('plant_id'),
-            trait_id = validated_data.get('trait_id'),
-            value = validated_data.get('value'),
-        )
+        with transaction.atomic():
+            content = super().create(validated_data)
+            
+            trait_value = TraitValue.objects.create(
+                content_id = content.id,
+                plant_id = validated_data.get('plant_id'),
+                trait_id = validated_data.get('trait_id'),
+                value = validated_data.get('value'),
+            )
 
-        if self.trait.data_type in ["varchar", "varchar[]"]:
-            trait_value.texts.add(*self.texts)
+            if self.trait.data_type in ["varchar", "varchar[]"]:
+                trait_value.texts.add(*self.texts)
 
-        return trait_value
+            return trait_value
 
     class Meta(ContentSerializer.Meta):
         model = TraitValue
@@ -256,14 +259,14 @@ class TaxonSerializer(ContentSerializer):
         try:
             Plant.objects.get(id=data['plant_id'])
         except Plant.DoesNotExist:
-            raise ValidationError("Não há planta cadastrada com esse id.")
+            raise ValidationError({'plant_id': "Não há planta cadastrada com esse id."})
         
         if data['taxonomic_status'] not in Taxon.STATUS.values:
-            raise ValidationError(f"Campo 'taxonomic_status' inválido. Valores válidos: {Taxon.STATUS.values}.")
+            raise ValidationError({'taxonomic_status': f"Valor '{data['taxonomic_status']}' inválido. Valores válidos: {Taxon.STATUS.values}."})
         
         for key, patt in self.patterns.items():
             if data[key] and not re.match(patt, data[key]):
-                raise ValidationError(f"Campo '{key}' inválido. Valor deve ser compatível com a expressão regular '{patt}.'")
+                raise ValidationError({f'{key}': f"Valor '{data[key]} inválido. Deve ser compatível com a expressão regular '{patt}.'"})
         
         matching_names = Taxon.objects.select_related('content').filter(
             family=data['family'],
@@ -277,23 +280,24 @@ class TaxonSerializer(ContentSerializer):
         )
 
         if matching_names:
-            raise ValidationError("Taxonomia idêntica a uma das aceitas ou propostas para a mesma planta.")
+            raise ValidationError({'non_field_errors': "Taxonomia idêntica a uma das aceitas ou propostas para a mesma planta."})
         
         return data
 
     def create(self, validated_data):
-        content = super().create(validated_data)
-        
-        return Taxon.objects.create(
-            content_id = content.id,
-            plant_id = validated_data['plant_id'],
-            family = validated_data['family'],
-            genus = validated_data['genus'],
-            species = validated_data['species'],
-            subspecies = validated_data['subspecies'],
-            variety = validated_data['variety'],
-            taxonomic_status = validated_data['taxonomic_status'],
-        )
+        with transaction.atomic():
+            content = super().create(validated_data)
+            
+            return Taxon.objects.create(
+                content_id = content.id,
+                plant_id = validated_data['plant_id'],
+                family = validated_data['family'],
+                genus = validated_data['genus'],
+                species = validated_data['species'],
+                subspecies = validated_data['subspecies'],
+                variety = validated_data['variety'],
+                taxonomic_status = validated_data['taxonomic_status'],
+            )
 
     class Meta:
         model = Taxon
@@ -347,11 +351,11 @@ class PopularNameSerializer(ContentSerializer):
         try:
             Plant.objects.get(id=data['plant_id'])
         except Plant.DoesNotExist:
-            raise ValidationError("Não há planta cadastrada com esse id.")
+            raise ValidationError({'plant_id': "Não há planta cadastrada com esse id."})
         
         for key, patt in self.patterns.items():
-            if data[key] and not re.match(patt, data[key]):
-                raise ValidationError(f"Campo '{key}' inválido. Valor deve ser compatível com a expressão regular '{patt}.'")
+            if data[key] and not re.match(patt, unidecode(data[key])):
+                raise ValidationError({f'{key}': f"Valor '{data[key]}' incompatível com a expressão regular '{patt}.'"})
         
         matching_names = PopularName.objects.filter(
             name=data['name'],
@@ -359,18 +363,19 @@ class PopularNameSerializer(ContentSerializer):
             content__status__in=["accepted", "proposed"],
         )
         if matching_names:
-            raise ValidationError("Nome igual a um dos nomes aceitos ou propostos para a mesma planta.")
+            raise ValidationError({'name': "Nome igual a um dos nomes aceitos ou propostos para a mesma planta."})
         
         return data
 
     def create(self, validated_data):
-        content = super().create(validated_data)
-        
-        return PopularName.objects.create(
-            content_id = content.id,
-            plant_id = validated_data['plant_id'],
-            name = validated_data['name'],
-        )
+        with transaction.atomic():
+            content = super().create(validated_data)
+            
+            return PopularName.objects.create(
+                content_id = content.id,
+                plant_id = validated_data['plant_id'],
+                name = validated_data['name'],
+            )
 
     class Meta(ContentSerializer.Meta):
         model = PopularName
@@ -380,6 +385,15 @@ class PopularNameSerializer(ContentSerializer):
             'plant_id',
             'name',
         ] + ContentSerializer.Meta.fields
+
+class PopularNamePreviewSerializer(PopularNameSerializer):
+    class Meta:
+        model = PopularName
+        fields = [
+            'content_id',
+            'content_status',
+            'name',
+        ]
 
 class NaturalOccurrenceRegionSerializer(ContentSerializer):
     # read
@@ -396,52 +410,33 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
     # both
     plant_id = IntegerField()
 
-    fk_fields_to_models = {
-        'country_id': Country,
-        'state_id': State,
-        'biome_id': Biome,
-        'vegetation_type_id': VegetationType,
-    }
-
     def __init__(self,  *args, **kwargs):
         kwargs['content_type'] = "natural_occurrence_region"
 
         super().__init__(*args, **kwargs)
 
     def validate(self, data):
-        # assert all ids passed exist
-        missing_id_errors = []
-        for field, model in self.fk_fields_to_models.items():
-            try:
-                if data.get(field):
-                    model.objects.get(id=data[field])
-            except ObjectDoesNotExist:
-                missing_id_errors.append(f"Não há objeto cadastrado com o {field} passado.")
-
-        if missing_id_errors:
-            raise ValidationError(missing_id_errors)
-
         # check conditionally required fields
-        brazil = Country.objects.get(name_text__pt_br='Brasil')
+        brazil = Country.objects.defer('area').get(name_text__pt_br='Brasil')
         if data.get('country_id') == brazil.id:
             missing_required_field_errors = []
             for field in ['state_id', 'biome_id', 'vegetation_type_id']:
                 if not data.get(field):
-                    missing_required_field_errors.append(f"{field}: campo obrigatório")
+                    missing_required_field_errors.append({f'{field}': "Campo obrigatório."})
             
             if missing_required_field_errors:
                 raise ValidationError(missing_required_field_errors)
 
         # assert data refers to existing vegetation area
         if data.get('vegetation_type_id'):
-            matching_vegetation_areas = VegetationArea.objects.filter(
+            matching_vegetation_areas = VegetationArea.objects.defer('area').filter(
                 country_id=data['country_id'],
                 state_id=data.get('state_id'),
                 biome_id=data.get('biome_id'),
                 vegetation_type_id=data['vegetation_type_id'],
             )
             if len(matching_vegetation_areas) == 0:
-                raise ValidationError("Item inconsistente com as áreas de vegetação na base de dados.")
+                raise ValidationError({'non_field_errors': "Item inconsistente com as áreas de vegetação na base de dados."})
 
         # assert proposal uniqueness
         matching_occurrence_regions = NaturalOccurrenceRegion.objects.filter(
@@ -453,21 +448,22 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
             content__status__in=["accepted", "proposed"],
         )
         if matching_occurrence_regions:
-            raise ValidationError("Item igual a um dos aceitos ou propostos para a mesma planta.")
+            raise ValidationError({'non_field_errors': "Item igual a um dos aceitos ou propostos para a mesma planta."})
         
         return data
 
     def create(self, validated_data):
-        content = super().create(validated_data)
-        
-        return NaturalOccurrenceRegion.objects.create(
-            content_id = content.id,
-            plant_id = validated_data['plant_id'],
-            country_id=validated_data['country_id'],
-            state_id=validated_data.get('state_id'),
-            biome_id=validated_data.get('biome_id'),
-            vegetation_type_id=validated_data.get('vegetation_type_id'),
-        )
+        with transaction.atomic():
+            content = super().create(validated_data)
+            
+            return NaturalOccurrenceRegion.objects.create(
+                content_id = content.id,
+                plant_id = validated_data['plant_id'],
+                country_id=validated_data['country_id'],
+                state_id=validated_data.get('state_id'),
+                biome_id=validated_data.get('biome_id'),
+                vegetation_type_id=validated_data.get('vegetation_type_id'),
+            )
 
     class Meta(ContentSerializer.Meta):
         model = NaturalOccurrenceRegion
@@ -496,6 +492,68 @@ class NaturalOccurrenceRegionPreviewSerializer(NaturalOccurrenceRegionSerializer
             'vegetation_type',
         ]
 
+class PlantCreationSerializer(ContentSerializer):
+    taxon = TaxonPreviewSerializer(write_only=True)
+    popular_name = PopularNamePreviewSerializer(write_only=True)
+
+    def __init__(self,  *args, **kwargs):
+        kwargs['content_type'] = "plant"
+
+        super().__init__(*args, **kwargs)
+
+    def create(self, validated_data):
+        with transaction.atomic():
+            # create plant
+            content = super().create(validated_data)
+
+            plant = Plant.objects.create(
+                content_id = content.id,
+                accepted_taxon_name = None,
+                accepted_family_name = None,
+                color_hex = validated_data.get('color_hex'),
+            )
+
+            # create taxon
+            taxon_serializer = TaxonSerializer(data=dict(validated_data['taxon'], **{
+                'taxonomic_status': 'accepted',
+                'content_proposer_id': validated_data['content_proposer_id'],
+                'plant_id': plant.id,
+            }))
+            if taxon_serializer.is_valid(raise_exception=True):
+                taxon = taxon_serializer.save()
+
+            # create popular_name
+            popular_name_serializer = PopularNameSerializer(data=dict(validated_data['popular_name'], **{
+                'content_proposer_id': validated_data['content_proposer_id'],
+                'plant_id': plant.id,
+            }))
+            if popular_name_serializer.is_valid(raise_exception=True):
+                popular_name = popular_name_serializer.save()
+
+            # update plant with taxonomic data
+            accepted_taxon_name = (
+                f"{taxon.species}" +
+                (f" subsp. {taxon.subspecies}" if taxon.subspecies else "") +
+                (f" var. {taxon.variety}" if taxon.variety else "")
+            )
+            
+            plant_serializer = PlantSerializer(plant, partial=True, data={
+                'accepted_taxon_name': accepted_taxon_name,
+                'accepted_family_name': taxon.family,
+                'color_hex': md5_to_color(string_to_md5(accepted_taxon_name)),
+            })
+            if plant_serializer.is_valid(raise_exception=True):
+                plant = plant_serializer.save()
+
+            return plant
+
+    class Meta(ContentSerializer.Meta):
+        model = Plant
+        fields = [
+            'taxon',
+            'popular_name',
+        ] + ContentSerializer.Meta.fields
+
 class PlantSerializer(ContentSerializer):
     # read
     id = IntegerField(read_only=True)
@@ -504,9 +562,6 @@ class PlantSerializer(ContentSerializer):
     accepted_taxon_name = CharField(required=False)
     accepted_family_name = CharField(required=False)
     color_hex = CharField(required=False)
-    # write -- only for validation of required fields on POST
-    taxon = JSONField(write_only=True)
-    popular_name = JSONField(write_only=True)
 
     def __init__(self,  *args, **kwargs):
         kwargs['content_type'] = "plant"
@@ -523,18 +578,6 @@ class PlantSerializer(ContentSerializer):
 
         super().__init__(*args, **kwargs)
 
-    def create(self, validated_data):
-        content = super().create(validated_data)
-
-        plant = Plant.objects.create(
-            content_id = content.id,
-            accepted_taxon_name = validated_data.get('accepted_taxon_name'),
-            accepted_family_name = validated_data.get('accepted_family_name'),
-            color_hex = validated_data.get('color_hex'),
-        )
-
-        return plant        
-
     class Meta(ContentSerializer.Meta):
         model = Plant
         fields = [
@@ -543,6 +586,4 @@ class PlantSerializer(ContentSerializer):
             'accepted_taxon_name',
             'accepted_family_name',
             'color_hex',
-            'taxon',
-            'popular_name',
         ] + ContentSerializer.Meta.fields

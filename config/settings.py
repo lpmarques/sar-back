@@ -10,25 +10,35 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-from pathlib import Path
+import os
+from config.env import BASE_DIR, env
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
-
+env.read_env(os.path.join(BASE_DIR, '.env'))
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-g^sb_)=c+f3t#_a42!!i+#n3jc(1pl1dvm_mux6dqovh6iwwf5'
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
-
+DEBUG = env.bool('DEBUG', default=False)
+LOG_LEVEL = env('DJANGO_LOG_LEVEL', default=('DEBUG' if DEBUG else 'INFO'))
+SECRET_KEY = env('DJANGO_SECRET_KEY')
+ALLOWED_HOSTS = env.list('DJANGO_ALLOWED_HOSTS', default=["*"])
 
 # Application definition
+
+DATABASES = {
+    'default': {
+        'ENGINE': env('DATABASE_ENGINE', default='django.contrib.gis.db.backends.postgis'),
+        'NAME': env('DATABASE_NAME'),
+        'USER': env('DATABASE_USER'),
+        'PASSWORD': env('DATABASE_PASSWORD'),
+        'HOST': env('DATABASE_HOST'),
+        'PORT': env.int('DATABASE_PORT'),
+        'OPTIONS': {
+            'sslmode': env('DATABASE_SSLMODE', default='require'),
+            'options': env('DATABASE_OPTIONS', default='-c search_path=public,core,catalog,geography,agroforestry')
+        },
+    }
+}
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -43,6 +53,7 @@ INSTALLED_APPS = [
 	'authemail',
     'corsheaders',
     'debug_toolbar',
+    'agroforestry',
     'catalog',
     'core',
     'geography',
@@ -57,10 +68,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    "debug_toolbar.middleware.DebugToolbarMiddleware",
+    'debug_toolbar.middleware.DebugToolbarMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
-
-ROOT_URLCONF = 'back.urls'
 
 TEMPLATES = [
     {
@@ -77,25 +87,14 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'back.wsgi.application'
+ROOT_URLCONF = 'config.urls'
 
+WSGI_APPLICATION = 'config.wsgi.application'
 
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': 'postgres',
-        'USER': 'postgres',
-        'PASSWORD': '1234',
-        'HOST': 'localhost',
-        'PORT': '5432',
-        'OPTIONS': {
-            'options': '-c search_path=public,core,catalog,geography,agroforestry'
-        },
-    }
-}
+GDAL_LIBRARY_PATH = env('GDAL_LIBRARY_PATH')
+GEOS_LIBRARY_PATH = env('GEOS_LIBRARY_PATH')
 
 ATOMIC_REQUESTS = True
 
@@ -157,24 +156,42 @@ INTERNAL_IPS = [
     "127.0.0.1",
 ]
 
-# LOGGING = {
-#     'version': 1,
-#     'filters': {
-#         'require_debug_true': {
-#             '()': 'django.utils.log.RequireDebugTrue',
-#         }
-#     },
-#     'handlers': {
-#         'console': {
-#             'level': 'DEBUG',
-#             'filters': ['require_debug_true'],
-#             'class': 'logging.StreamHandler',
-#         }
-#     },
-#     'loggers': {
-#         'django.db.backends': {
-#             'level': 'DEBUG',
-#             'handlers': ['console'],
-#         }
-#     }
-# }
+LOGGING = {
+    'version': 1,
+    "disable_existing_loggers": False,
+    'filters': {
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        }
+    },
+    'handlers': {
+        "stdout": {
+            "class": "logging.StreamHandler",
+            "level": "INFO",
+            "stream": "ext://sys.stdout"
+        },
+        "stderr": {
+            "class": "logging.StreamHandler",
+            "level": "ERROR",
+            "stream": "ext://sys.stderr"
+        },
+        'console': {
+            'level': 'DEBUG',
+            'filters': ['require_debug_true'],
+            'class': 'logging.StreamHandler',
+        }
+    },
+    'loggers': {
+        '': {
+            'level': LOG_LEVEL,
+            'handlers': [
+              'stdout',
+              'stderr',
+            ],
+        },
+        'django.db.backends': {
+            'level': LOG_LEVEL,
+            'handlers': ['console'],
+        }
+    }
+}
