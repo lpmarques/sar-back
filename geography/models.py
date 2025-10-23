@@ -1,5 +1,5 @@
+from django.contrib.gis.db import models
 from django.db.models.functions import Now
-from django.contrib.gis.db import models as models
 from core.models import Source, Text
 
 
@@ -66,7 +66,6 @@ class MonthlyDroughtArea(models.Model):
 
 class Municipality(models.Model):
     name = models.CharField()
-    area = models.GeometryField()
     fiscal_module_size_sqrm = models.IntegerField(blank=True, null=True)
     state = models.ForeignKey('State', on_delete=models.DO_NOTHING)
     source = models.ForeignKey(Source, on_delete=models.DO_NOTHING)

@@ -65,7 +65,7 @@ class MunicipalityListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, state_id):
-        municipalities = Municipality.objects.defer(*GEOM_FIELDS).prefetch_related('state').filter(state_id=state_id)
+        municipalities = Municipality.objects.filter(state_id=state_id)
         serializer = MunicipalitySerializer(municipalities, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)

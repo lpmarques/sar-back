@@ -178,7 +178,7 @@ class ContentView(APIView):
         serializer = self.serializer_class(data=data)
 
         object_res = self.validate_and_save_serializer(serializer)
-        if isinstance(object, Response):
+        if isinstance(object_res, Response):
             return object_res
 
         content = {

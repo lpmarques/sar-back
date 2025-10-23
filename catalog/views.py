@@ -1,15 +1,12 @@
 from django.contrib.postgres.aggregates import ArrayAgg
-from django.core.exceptions import ObjectDoesNotExist
-from django.db.models.functions import Now
 from rest_framework import status
-from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from core.views import ContentListView, ContentView
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, TraitValue
 from catalog.serializers.models import *
 from catalog.serializers.parameters import *
-from catalog.utils import md5_to_color, string_to_md5
 
 class PlantView(ContentView):
     serializer_class = PlantSerializer
@@ -45,49 +42,14 @@ class PlantView(ContentView):
             return Response(content, status=status.HTTP_404_NOT_FOUND)
 
         serializer = PlantSerializer(plant, params=params)
-
+        
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
         data = request.data
         data.update({'content_proposer_id': request.user.id})
 
-        # create plant
-        plant_serializer = PlantSerializer(data=data)
-        plant_res = self.validate_and_save_serializer(plant_serializer)
-        if isinstance(plant_res, Response):
-            return plant_res
-
-        # create taxon
-        taxon_serializer = TaxonSerializer(data=dict(data['taxon'], **{
-            'taxonomic_status': 'accepted',
-            'content_proposer_id': request.user.id,
-            'plant_id': plant_res.id,
-        }))
-        taxon_res = self.validate_and_save_serializer(taxon_serializer)
-        if isinstance(taxon_res, Response):
-            return taxon_res
-
-        # create popular_name
-        popular_name_serializer = PopularNameSerializer(data=dict(data['popular_name'], **{
-            'content_proposer_id': request.user.id,
-            'plant_id': plant_res.id,
-        }))
-        popular_name_res = self.validate_and_save_serializer(popular_name_serializer)
-        if isinstance(popular_name_res, Response):
-            return popular_name_res
-        
-        # update plant with taxonomic data
-        accepted_taxon_name = (
-            f"{taxon_res.species}" +
-            (f" subsp. {taxon_res.subspecies}" if taxon_res.subspecies else "") +
-            (f" var. {taxon_res.variety}" if taxon_res.variety else "")
-        )
-        plant_serializer = PlantSerializer(plant_res, partial=True, data={
-            'accepted_taxon_name': accepted_taxon_name,
-            'accepted_family_name': taxon_res.family,
-            'color_hex': md5_to_color(string_to_md5(accepted_taxon_name)),
-        })
+        plant_serializer = PlantCreationSerializer(data=data)
         plant_res = self.validate_and_save_serializer(plant_serializer)
         if isinstance(plant_res, Response):
             return plant_res
