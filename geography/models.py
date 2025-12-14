@@ -1,7 +1,7 @@
 from django.contrib.gis.db import models
 from django.db.models.functions import Now
+from geography.querysets import ClimateNormalQuerySet, CountryQuerySet, SoilAcidityLevelQuerySet, SoilPhMapQuerySet, SoilTextureTypeQuerySet
 from core.models import Source, Text
-
 
 class Biome(models.Model):
     name = models.CharField()
@@ -18,17 +18,23 @@ class Biome(models.Model):
 
 
 class ClimateNormal(models.Model):
+    station_code = models.IntegerField()
     country = models.ForeignKey('Country', on_delete=models.DO_NOTHING)
     state = models.ForeignKey('State', on_delete=models.DO_NOTHING, blank=True, null=True)
-    municipality = models.ForeignKey('Municipality', on_delete=models.DO_NOTHING, blank=True, null=True)
+    location = models.PointField()
+    elevation_m = models.IntegerField()
     period_first_year = models.IntegerField(blank=True, null=True)
     period_last_year = models.IntegerField(blank=True, null=True)
     month = models.IntegerField(blank=True, null=True)
-    precipitation_mm = models.IntegerField(blank=True, null=True)
-    temperature_c_average = models.IntegerField(blank=True, null=True)
+    precipitation_mm = models.DecimalField(blank=True, null=True, max_digits=5, decimal_places=1)
+    temperature_c_minimum = models.DecimalField(blank=True, null=True, max_digits=3, decimal_places=1)
+    temperature_c_average = models.DecimalField(blank=True, null=True, max_digits=3, decimal_places=1)
+    temperature_c_maximum = models.DecimalField(blank=True, null=True, max_digits=3, decimal_places=1)
     source = models.ForeignKey(Source, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
+
+    objects = ClimateNormalQuerySet.as_manager()
 
     class Meta:
         managed = True
@@ -42,6 +48,8 @@ class Country(models.Model):
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
 
+    objects = CountryQuerySet().as_manager()
+
     class Meta:
         managed = True
         db_table = '"geography"."countries"'
@@ -49,11 +57,10 @@ class Country(models.Model):
 
 class MonthlyDroughtArea(models.Model):
     country = models.ForeignKey(Country, on_delete=models.DO_NOTHING)
-    state = models.ForeignKey('State', on_delete=models.DO_NOTHING, blank=True, null=True)
     area = models.GeometryField()
-    year = models.CharField()
-    month = models.CharField()
-    drought_level = models.CharField()
+    year = models.IntegerField()
+    month = models.IntegerField()
+    drought_level = models.IntegerField()
     drought_level_code = models.CharField(blank=True, null=True)
     source = models.ForeignKey(Source, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
@@ -79,11 +86,13 @@ class Municipality(models.Model):
 
 
 class SoilAcidityLevel(models.Model):
-    name_text = models.ForeignKey(Text, on_delete=models.DO_NOTHING)
+    name_text = models.OneToOneField(Text, on_delete=models.DO_NOTHING)
     ph_min = models.DecimalField(max_digits=3, decimal_places=1)
     ph_max = models.DecimalField(max_digits=3, decimal_places=1)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
+
+    objects = SoilAcidityLevelQuerySet().as_manager()
 
     class Meta:
         managed = True
@@ -92,12 +101,15 @@ class SoilAcidityLevel(models.Model):
 
 class SoilPhMap(models.Model):
     rast = models.RasterField()
-    filename = models.CharField(blank=True, null=True)
+    tile_extent = models.GeometryField()
+    valued_extent = models.GeometryField()
     country = models.ForeignKey(Country, on_delete=models.DO_NOTHING)
     state = models.ForeignKey('State', on_delete=models.DO_NOTHING, blank=True, null=True)
     source = models.ForeignKey(Source, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
+
+    objects = SoilPhMapQuerySet.as_manager()
 
     class Meta:
         managed = True
@@ -107,8 +119,8 @@ class SoilPhMap(models.Model):
 class SoilTextureArea(models.Model):
     country = models.ForeignKey(Country, on_delete=models.DO_NOTHING)
     state = models.ForeignKey('State', on_delete=models.DO_NOTHING, blank=True, null=True)
+    texture_type = models.ForeignKey('SoilTextureType', on_delete=models.DO_NOTHING, related_name='soil_texture_areas')
     area = models.GeometryField()
-    texture = models.CharField()
     source = models.ForeignKey(Source, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
@@ -116,6 +128,18 @@ class SoilTextureArea(models.Model):
     class Meta:
         managed = True
         db_table = '"geography"."soil_texture_areas"'
+
+
+class SoilTextureType(models.Model):
+    name_text = models.OneToOneField(Text, on_delete=models.DO_NOTHING)
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
+
+    objects = SoilTextureTypeQuerySet().as_manager()
+
+    class Meta:
+        managed = True
+        db_table = '"geography"."soil_texture_types"'
 
 
 class State(models.Model):
@@ -138,7 +162,7 @@ class VegetationArea(models.Model):
     state = models.ForeignKey(State, on_delete=models.DO_NOTHING, blank=True, null=True, related_name='vegetation_areas')
     biome = models.ForeignKey(Biome, on_delete=models.DO_NOTHING, blank=True, null=True, related_name='vegetation_areas')
     vegetation_type = models.ForeignKey('VegetationType', on_delete=models.DO_NOTHING, related_name='vegetation_areas')
-    area = models.GeometryField()
+    area = models.GeometryField(blank=True, null=True) # temporarily nullable to save space by storing only Mata Atlântica polygons
     source = models.ForeignKey(Source, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())

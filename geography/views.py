@@ -1,32 +1,41 @@
+from django.db.models import IntegerField, Value
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from geography.models import Biome, Country, Municipality, State, VegetationType
-from geography.serializers import BiomeParamsSerializer, BiomeSerializer, CountrySerializer, StateParamsSerializer, StateSerializer, MunicipalitySerializer, VegetationTypeParamsSerializer, VegetationTypeSerializer
+import requests
+from geography.models import Biome, ClimateNormal, Country, MonthlyDroughtArea, Municipality, SoilAcidityLevel, SoilPhMap, SoilTextureType, State, VegetationType
+from geography.serializers import BiomeParamsSerializer, BiomeSerializer, ClimateNormalParamsSerializer, ClimateNormalSerializer, ClimateNormalsSummary, CountryParamsSerializer, CountrySerializer, DroughtParamsSerializer, DroughtSerializer, DroughtsSummary, ElevationParamsSerializer, ElevationSerializer, MunicipalitySerializer, SoilAcidityLevelSerializer, SoilPhParamsSerializer, SoilPhPixelSerializer, SoilTextureTypeParamsSerializer, SoilTextureTypeSerializer, StateParamsSerializer, StateSerializer, VegetationTypeParamsSerializer, VegetationTypeSerializer
 
 GEOM_FIELDS = ['area']
-
-class CountryListView(APIView):
-    permission_classes = [AllowAny]
-
-    def get(self, request):
-        countries = Country.objects.defer(*GEOM_FIELDS).select_related('name_text').all()
-        serializer = CountrySerializer(countries, many=True)
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class CountryView(APIView):
     permission_classes = [AllowAny]
 
+    def get_queryset(self):
+        return Country.objects.defer(*GEOM_FIELDS).denormalized()
+
     def get(self, request, country_id):
         try:
-            country = Country.objects.defer(*GEOM_FIELDS).get(id=country_id)
+            country = self.get_queryset().get(id=country_id)
         except Country.DoesNotExist:
             content = {'msg': 'País não cadastrado'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = CountrySerializer(country)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class CountryListView(CountryView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        filters = {}
+        if request.query_params:
+            filters.update(CountryParamsSerializer(request.query_params).data)
+
+        countries = self.get_queryset().filter(**filters)
+        serializer = CountrySerializer(countries, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -38,7 +47,7 @@ class StateView(APIView):
 
     def get(self, request, state_id):
         try:
-            state = State.objects.defer(*GEOM_FIELDS).get(id=state_id)
+            state = State.objects.get_queryset().get(id=state_id)
         except State.DoesNotExist:
             content = {'msg': 'Estado não cadastrado'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
@@ -55,18 +64,8 @@ class StateListView(StateView):
 
         filters.update({'country_id': country_id})
 
-        states = self.get_queryset().filter(**filters).distinct()
+        states = self.get_queryset().filter(**filters)
         serializer = StateSerializer(states, many=True)
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-class MunicipalityListView(APIView):
-    permission_classes = [AllowAny]
-
-    def get(self, request, state_id):
-        municipalities = Municipality.objects.filter(state_id=state_id)
-        serializer = MunicipalitySerializer(municipalities, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -84,6 +83,14 @@ class MunicipalityView(APIView):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+class MunicipalityListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, state_id):
+        municipalities = Municipality.objects.filter(state_id=state_id)
+        serializer = MunicipalitySerializer(municipalities, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class BiomeView(APIView):
     permission_classes = [AllowAny]
@@ -115,7 +122,6 @@ class BiomeListView(BiomeView):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
 class VegetationTypeView(APIView):
     permission_classes = [AllowAny]
 
@@ -142,3 +148,200 @@ class VegetationTypeListView(VegetationTypeView):
         serializer = VegetationTypeSerializer(vegetation_types, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class LandSummaryView(APIView):
+    def get(self, request):
+        if not request.query_params.get('latlong'):
+            content = {'latlong': 'Parâmetro obrigatório.'}
+            return Response(content, status=status.HTTP_400_BAD_REQUEST)
+
+        country_filters = CountryParamsSerializer(request.query_params).data
+        country = Country.objects.defer(*GEOM_FIELDS).denormalized().filter(
+            **country_filters
+        ).first()
+        
+        state_filters = StateParamsSerializer(request.query_params).data
+        state = State.objects.defer(*GEOM_FIELDS).filter(
+            **dict(state_filters, country_id=country.id)
+        ).first()
+        
+        biome_filters = BiomeParamsSerializer(request.query_params).data
+        biome = Biome.objects.defer(*GEOM_FIELDS).filter(
+            **dict(biome_filters, country_id=country.id)
+        ).first()
+        
+        vegetation_type_filters = VegetationTypeParamsSerializer(request.query_params).data
+        vegetation_type = VegetationType.objects.filter(
+            **dict(vegetation_type_filters, vegetation_areas__country_id=country.id)
+        ).first()
+
+        summary = {
+            'country': CountrySerializer(country).data,
+            'state': StateSerializer(state).data,
+            'biome': BiomeSerializer(biome).data,
+            'vegetation_type': VegetationTypeSerializer(vegetation_type).data,
+        }
+
+        return Response(summary, status=status.HTTP_200_OK)
+
+
+class SoilPhView(APIView):
+    def get(self, request):
+        filters = {}
+        if request.query_params:
+            filters.update(SoilPhParamsSerializer(request.query_params).data)
+        
+        point = filters.get('tile_extent__intersects')
+        if not point:
+            content = {'latlong': 'Parâmetro obrigatório.'}
+            return Response(content, status=status.HTTP_400_BAD_REQUEST)
+
+        ph_pixel = SoilPhMap.objects.get_pixel_value(point, filters)
+        if not ph_pixel.value:
+            content = {'msg': 'Não há estimativa de pH compatível com os parâmetros passados.'}
+            return Response(content, status=status.HTTP_404_NOT_FOUND)
+            
+        serializer = SoilPhPixelSerializer(ph_pixel)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+ 
+class SoilAcidityLevelListView(APIView):
+    def get(self, request):
+        soil_acidity_levels = SoilAcidityLevel.objects.denormalized()
+        serializer = SoilAcidityLevelSerializer(soil_acidity_levels, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+  
+class SoilTextureTypeListView(APIView):
+    def get(self, request):
+        filters = {}
+        if request.query_params:
+            filters.update(SoilTextureTypeParamsSerializer(request.query_params).data)
+
+        soil_texture_types = SoilTextureType.objects.denormalized().filter(**filters)
+        serializer = SoilTextureTypeSerializer(soil_texture_types, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class SoilSummaryView(APIView):
+    def get(self, request):
+        if not request.query_params.get('latlong'):
+            content = {'latlong': 'Parâmetro obrigatório.'}
+            return Response(content, status=status.HTTP_400_BAD_REQUEST)
+
+        ph_filters = SoilPhParamsSerializer(request.query_params).data
+        ph_point = ph_filters.get('tile_extent__intersects')
+        ph_pixel = SoilPhMap.objects.get_pixel_value(ph_point, ph_filters)
+        
+        texture_filters = SoilTextureTypeParamsSerializer(request.query_params).data
+        texture_type = SoilTextureType.objects.filter(**texture_filters).first()
+
+        summary = {
+            'acidity': SoilPhPixelSerializer(ph_pixel if ph_pixel.value else None).data,
+            'texture': SoilTextureTypeSerializer(texture_type).data,
+        }
+
+        return Response(summary, status=status.HTTP_200_OK)
+
+
+class ClimateNormalListView(APIView):
+    def get(self, request):
+        filters = ClimateNormalParamsSerializer(request.query_params).data
+        target = filters.pop('target_point', None)
+
+        queryset = ClimateNormal.objects
+        
+        if target:
+            nearest_station = ClimateNormal.objects.get_nearest_station(target, filters)
+        
+            if not nearest_station:
+                content = {'msg': 'Não há normal climatológica compatível com os parâmetros passados.'}
+                return Response(content, status=status.HTTP_404_NOT_FOUND)
+            
+            filters.update({'station_code': nearest_station['station_code']})
+            queryset = queryset.annotate(
+                station_distance_m=Value(nearest_station['station_distance_m'].m, output_field=IntegerField())
+            )
+
+        climate_normals = queryset.filter(**filters)
+
+        serializer = ClimateNormalSerializer(climate_normals, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class DroughtListView(APIView):
+    def get(self, request):
+        filters = {}
+        if request.query_params:
+            filters.update(DroughtParamsSerializer(request.query_params).data)
+
+        droughts = MonthlyDroughtArea.objects.defer(*GEOM_FIELDS).filter(**filters).order_by(
+            'year',
+            'month',
+            'drought_level'
+        )
+        serializer = DroughtSerializer(droughts, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class ElevationView(APIView):
+    source_url = 'https://api.open-meteo.com/v1/elevation'
+
+    def get(self, request):
+        params = ElevationParamsSerializer(request.query_params).data
+        point = params.get('latlong')
+        
+        if not point:
+            content = {'latlong': 'Parâmetro obrigatório.'}
+            return Response(content, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            response = requests.get(f'{self.source_url}?longitude={point.x}&latitude={point.y}')
+            response.raise_for_status()
+
+            serializer = ElevationSerializer(response.json())
+        except Exception:
+            content = {'msg': 'Erro ao consultar API externa.'}
+            return Response(content, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class ClimateSummaryView(APIView):
+    elevation_source_url = 'https://api.open-meteo.com/v1/elevation'
+    
+    def get(self, request):
+        if not request.query_params.get('latlong'):
+            content = {'latlong': 'Parâmetro obrigatório.'}
+            return Response(content, status=status.HTTP_400_BAD_REQUEST)
+
+        elevation = None
+        point = ElevationParamsSerializer(request.query_params).data.get('latlong')
+        response = requests.get(f'{self.elevation_source_url}?longitude={point.x}&latitude={point.y}')
+        if response.ok:
+            elevation = response.json()
+        
+        climate_normals = []
+        normals_queryset = ClimateNormal.objects
+        normals_filters = ClimateNormalParamsSerializer(request.query_params).data
+        normals_target = normals_filters.pop('target_point')
+        normals_latest_year = normals_queryset.get_latest_year(normals_filters)
+        normals_filters.update(normals_latest_year or {})
+        nearest_station = normals_queryset.get_nearest_station(normals_target, normals_filters)
+        if nearest_station:
+            normals_filters.update({'station_code': nearest_station['station_code']})
+            normals_queryset = normals_queryset.annotate(
+                station_distance_m=Value(nearest_station['station_distance_m'].m, output_field=IntegerField())
+            )
+
+            climate_normals = normals_queryset.filter(**normals_filters)
+
+        droughts_filters = DroughtParamsSerializer(request.query_params).data
+        droughts = MonthlyDroughtArea.objects.defer(*GEOM_FIELDS).filter(**droughts_filters)
+
+        summary = {
+            'elevation': ElevationSerializer(elevation).data,
+            'normals': ClimateNormalsSummary(climate_normals or None).data,
+            'droughts': DroughtsSummary(droughts or None).data,
+        }
+
+        return Response(summary, status=status.HTTP_200_OK)

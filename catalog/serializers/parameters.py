@@ -5,10 +5,10 @@ class StringListField(Field):
         self.separator = separator
         super().__init__(*args, **kwargs)
 
-    def to_internal_value(self, value):
+    def to_internal_value(self, value: list) -> str:
         return self.separator.join(value) if value else None
     
-    def to_representation(self, value):
+    def to_representation(self, value: str) -> list:
         return value.split(self.separator) if value else None
 
 class TaxonParamsSerializer(Serializer):
