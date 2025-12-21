@@ -64,7 +64,7 @@ class StateListView(StateView):
 
         filters.update({'country_id': country_id})
 
-        states = self.get_queryset().filter(**filters)
+        states = self.get_queryset().filter(**filters).distinct()
         serializer = StateSerializer(states, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)

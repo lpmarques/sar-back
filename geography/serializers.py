@@ -1,4 +1,3 @@
-from datetime import datetime
 from django.contrib.gis.geos import Point
 from rest_framework.serializers import CharField, DecimalField, Field, IntegerField, ModelSerializer, Serializer, SerializerMethodField, SlugRelatedField, ValidationError
 from geography.models import Biome, ClimateNormal, Country, MonthlyDroughtArea, Municipality, SoilAcidityLevel, SoilPhMap, SoilTextureType, State, VegetationType
