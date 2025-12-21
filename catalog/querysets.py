@@ -80,8 +80,15 @@ class TraitQuerySet(QuerySet):
         return self.select_related(
             'name_text',
             'section_text',
+            'description_text',
         ).prefetch_related(
-            'text_value_options',
+            Prefetch(
+                'trait_text_value_options',
+                queryset=apps.get_model('catalog', 'TraitTextValueOption').objects.select_related(
+                    'value_text',
+                    'description_text',
+                ).order_by('pk')
+            )
         )
 
 class TraitValueQuerySet(ContentQuerySet):

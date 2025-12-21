@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework.serializers import CharField, IntegerField, JSONField, ModelSerializer, SerializerMethodField, SlugRelatedField, ValidationError
 from unidecode import unidecode
-from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, Trait, TraitValue
+from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, Trait, TraitTextValueOption, TraitValue
 from catalog.utils import md5_to_color, string_to_md5
 from core.models import Text
 from core.serializers import ContentSerializer
@@ -27,17 +27,29 @@ def none_if_empty(value: str):
 
     return value
 
+class TraitTextValueOptionSerializer(ModelSerializer):
+    value = SlugRelatedField(read_only=True, source='value_text', slug_field='pt_br')
+    description = SlugRelatedField(read_only=True, source='description_text', slug_field='pt_br')
+
+    class Meta:
+        model = TraitTextValueOption
+        fields = [
+            'value',
+            'description',
+        ]
+
 class TraitSerializer(ModelSerializer):
     id = IntegerField(read_only=True)
     slug = CharField(read_only=True, source='name')
     name = SlugRelatedField(read_only=True, source='name_text', slug_field='pt_br')
     section_slug = CharField(read_only=True, source='section')
     section_name = SlugRelatedField(read_only=True, source='section_text', slug_field='pt_br')
+    description = SlugRelatedField(read_only=True, source='description_text', slug_field='pt_br')
     type = SerializerMethodField()
     is_nullable = CharField(read_only=True)
     numeric_value_min = IntegerField(read_only=True)
     numeric_value_max = IntegerField(read_only=True)
-    text_value_options = SlugRelatedField(read_only=True, many=True, slug_field='pt_br')
+    text_value_options = TraitTextValueOptionSerializer(read_only=True, many=True, source='trait_text_value_options')
 
     def get_type(self, obj):
         return pg_to_json_type.get(obj.data_type)
@@ -50,6 +62,7 @@ class TraitSerializer(ModelSerializer):
             'name',
             'section_slug',
             'section_name',
+            'description',
             'type',
             'is_nullable',
             'numeric_value_min',
@@ -151,7 +164,8 @@ class TraitValueSerializer(ContentSerializer):
             values = value if trait.data_type == "varchar[]" else [value]
             if len(values) == 0:
                 raise ValidationError({'value': "Valor não pode ser vazio."})
-            options = TraitSerializer(trait).data.get('text_value_options')
+
+            options = [item.pt_br for item in trait.text_value_options.all()]
             for item in values:
                 if item not in options:
                     raise ValidationError({

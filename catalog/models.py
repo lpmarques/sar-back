@@ -92,6 +92,7 @@ class Trait(models.Model):
     name_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='name_text_traits')
     section = models.CharField(blank=True, null=True)
     section_text = models.ForeignKey(Text, models.DO_NOTHING, blank=True, null=True, related_name='section_text_traits')
+    description_text = models.OneToOneField(Text, models.DO_NOTHING, blank=True, null=True, related_name='description_text_traits')
     data_type = models.CharField()
     schema = models.JSONField()
     is_nullable = models.BooleanField()
@@ -102,7 +103,7 @@ class Trait(models.Model):
     updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
-    text_value_options = models.ManyToManyField(Text, through='TraitTextValueOption')
+    text_value_options = models.ManyToManyField(Text, through='TraitTextValueOption', through_fields=('trait', 'value_text'))
 
     objects = TraitQuerySet().as_manager()
 
@@ -113,9 +114,10 @@ class Trait(models.Model):
 
 
 class TraitTextValueOption(models.Model):
-    pk = models.CompositePrimaryKey('trait', 'option_text')
-    trait = models.ForeignKey(Trait, models.DO_NOTHING)
-    option_text = models.ForeignKey(Text, models.DO_NOTHING)
+    pk = models.CompositePrimaryKey('trait', 'value_text')
+    trait = models.ForeignKey(Trait, models.DO_NOTHING, related_name='trait_text_value_options')
+    value_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='value_text_options')
+    description_text = models.ForeignKey(Text, models.DO_NOTHING, blank=True, null=True, related_name='description_text_options')
     created_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
