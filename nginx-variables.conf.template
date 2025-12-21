@@ -1,0 +1,7 @@
+map $host $django_url {
+  default "$DJANGO_URL";
+}
+
+map $host $django_port {
+  default "$DJANGO_PORT";
+}
