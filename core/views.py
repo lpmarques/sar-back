@@ -12,12 +12,23 @@ from core.serializers import *
 class UserView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, user_id):
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            content = {'msg': 'Usuário não cadastrado.'}
-            return Response(content, status=status.HTTP_404_NOT_FOUND)
+    def get(self, request, user_id=None):
+        if user_id:
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                content = {'msg': 'Usuário não cadastrado.'}
+                return Response(content, status=status.HTTP_404_NOT_FOUND)
+        else:
+            email = request.query_params.get('email')
+            if not email:
+                content = {'email': 'Parâmetro obrigatório.'}
+                return Response(content, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                user = User.objects.get(email=email)
+            except User.DoesNotExist:
+                content = {'msg': 'Usuário não cadastrado.'}
+                return Response(content, status=status.HTTP_404_NOT_FOUND)
 
         if user.deleted_at:
             content = {'msg': 'Dados indisponíveis.'}
