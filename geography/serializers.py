@@ -79,6 +79,7 @@ class MunicipalitySerializer(ModelSerializer):
     name = CharField(read_only=True)
     state_id = IntegerField(read_only=True)
     country_id = IntegerField(read_only=True)
+    fiscal_module_size_m2 = IntegerField(read_only=True, source='fiscal_module_size_sqrm')
 
     class Meta:
         model = Municipality
@@ -87,6 +88,7 @@ class MunicipalitySerializer(ModelSerializer):
             'name',
             'state_id',
             'country_id',
+            'fiscal_module_size_m2',
         ]
 
 class BiomeParamsSerializer(Serializer):

@@ -197,7 +197,7 @@ class ContentView(APIView):
             'msg': 'Proposta cadastrada com sucesso.'
         }
 
-        return Response(content, status=status.HTTP_200_OK)
+        return Response(content, status=status.HTTP_201_CREATED)
     
     def delete(self, request, content_id):
         try:
@@ -206,7 +206,7 @@ class ContentView(APIView):
             return Response({'msg': 'Não há proposta cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
         
         if content.proposer_id != request.user.id:
-            return Response({'msg': 'Você não tem autorização para rejeitar essa proposta.'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'msg': 'Você não tem permissão para rejeitar essa proposta.'}, status=status.HTTP_403_FORBIDDEN)
 
         if content.rejected_at:
             return Response({'msg': 'Proposta já rejeitada.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -270,7 +270,7 @@ class ContentEndorsementView(APIView):
             return Response({'msg': 'Não há apoio cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
         
         if endorsement.endorser.id != request.user.id:
-            return Response({'msg': 'Você não tem autorização para remover esse apoio.'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'msg': 'Você não tem permissão para remover esse apoio.'}, status=status.HTTP_403_FORBIDDEN)
 
         if endorsement.deleted_at:
             return Response({'msg': 'Apoio já removido.'}, status=status.HTTP_400_BAD_REQUEST)

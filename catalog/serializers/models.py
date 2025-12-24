@@ -185,7 +185,7 @@ class TraitValueSerializer(ContentSerializer):
             if (value[1] > trait.numericValueMax):
                 raise ValidationError({'value': f"O valor máximo está fora do intervalo permitido para o traço: de {trait.numeric_value_min} até {trait.numeric_value_max}"})
         
-        return data
+        return super().validate(data)
 
     def create(self, validated_data):
         with transaction.atomic():
@@ -296,7 +296,7 @@ class TaxonSerializer(ContentSerializer):
         if matching_names:
             raise ValidationError({'non_field_errors': "Taxonomia idêntica a uma das aceitas ou propostas para a mesma planta."})
         
-        return data
+        return super().validate(data)
 
     def create(self, validated_data):
         with transaction.atomic():
@@ -379,7 +379,7 @@ class PopularNameSerializer(ContentSerializer):
         if matching_names:
             raise ValidationError({'name': "Nome igual a um dos nomes aceitos ou propostos para a mesma planta."})
         
-        return data
+        return super().validate(data)
 
     def create(self, validated_data):
         with transaction.atomic():
@@ -464,7 +464,7 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
         if matching_occurrence_regions:
             raise ValidationError({'non_field_errors': "Item igual a um dos aceitos ou propostos para a mesma planta."})
         
-        return data
+        return super().validate(data)
 
     def create(self, validated_data):
         with transaction.atomic():

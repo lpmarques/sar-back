@@ -47,15 +47,24 @@ class SourceFieldValueSerializer(ModelSerializer):
         except SourceField.DoesNotExist:
             raise ValidationError({'field_id': f"Não há campo cadastrado com o id {field_id}."})
 
-        try:
-            validate(value, field.schema, format_checker=FormatChecker())
-        except Exception as e:
-            raise ValidationError({'value': f"Valor inválido para o campo '{field.name_text.pt_br}' (field_id: {field_id})': {e}"})
-
         if field.schema['type'] != "string":
             data['value'] = json.dumps(value)
 
+        self.field = field
+        self.loaded_value = value
+
         return super().to_internal_value(data) # default method must run after custom so that it validates 'value' as string
+
+    def validate(self, data):
+        field = self.field
+        value = self.loaded_value
+
+        try:
+            validate(value, field.schema, format_checker=FormatChecker())
+        except Exception as e:
+            raise ValidationError({'value': f"Valor inválido para o campo '{field.name_text.pt_br}' (field_id: {field.id})': {e}"})
+        
+        return data
 
     class Meta:
         model = SourceFieldValue
@@ -240,6 +249,11 @@ class ContentParamsSerializer(Serializer):
     with_user_endorsement_info = BooleanField(required=False)
 
 class ContentSerializer(ModelSerializer):
+    # both
+    source_id = IntegerField(required=False, source='content.source_id')
+    # write
+    content_proposer_id = IntegerField(write_only=True)
+    content_proposer_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     # read
     content_status = CharField(read_only=True, source='content.status')
     content_proposer = UserPreviewSerializer(read_only=True, source='content.proposer')
@@ -247,11 +261,6 @@ class ContentSerializer(ModelSerializer):
     proposed_at = DateTimeField(read_only=True, source='content.proposed_at')
     accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
     rejected_at = DateTimeField(read_only=True, source='content.rejected_at')
-    # write
-    content_proposer_id = IntegerField(write_only=True)
-    content_proposer_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
-    # both
-    source_id = IntegerField(required=False, source='content.source_id')
     
     def __init__(self,  *args, **kwargs):
         self.content_type = kwargs.pop('content_type')

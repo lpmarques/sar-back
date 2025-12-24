@@ -116,8 +116,8 @@ class Trait(models.Model):
 class TraitTextValueOption(models.Model):
     pk = models.CompositePrimaryKey('trait', 'value_text')
     trait = models.ForeignKey(Trait, models.DO_NOTHING, related_name='trait_text_value_options')
-    value_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='value_text_options')
-    description_text = models.ForeignKey(Text, models.DO_NOTHING, blank=True, null=True, related_name='description_text_options')
+    value_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='trait_value_text_options')
+    description_text = models.ForeignKey(Text, models.DO_NOTHING, blank=True, null=True, related_name='trait_description_text_options')
     created_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
