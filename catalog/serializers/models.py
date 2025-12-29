@@ -2,7 +2,7 @@ from django.db import transaction
 from rest_framework.serializers import CharField, IntegerField, JSONField, ModelSerializer, SerializerMethodField, SlugRelatedField, ValidationError
 from unidecode import unidecode
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, Trait, TraitTextValueOption, TraitValue
-from catalog.utils import md5_to_color, string_to_md5
+from catalog.utils import md5_to_color, none_if_empty, string_to_md5
 from core.models import Text
 from core.serializers import ContentSerializer
 from geography.models import Country, VegetationArea
@@ -19,13 +19,6 @@ pg_to_json_type = {
     'decimal': 'number',
     'boolean': 'boolean'
 }
-
-def none_if_empty(value: str):
-    value = value.strip()
-    if len(value) == 0:
-        return None
-
-    return value
 
 class TraitTextValueOptionSerializer(ModelSerializer):
     value = SlugRelatedField(read_only=True, source='value_text', slug_field='pt_br')
