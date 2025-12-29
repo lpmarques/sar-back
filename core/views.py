@@ -267,7 +267,7 @@ class ContentEndorsementView(APIView):
         try:
             endorsement = ContentEndorsement.objects.denormalized().get(id=endorsement_id)
         except ContentEndorsement.DoesNotExist:
-            return Response({'msg': 'Não há apoio cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'msg': 'Não há apoio cadastrado com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
         
         if endorsement.endorser.id != request.user.id:
             return Response({'msg': 'Você não tem permissão para remover esse apoio.'}, status=status.HTTP_403_FORBIDDEN)
