@@ -3,7 +3,7 @@ from django.db.models.functions import Now
 from catalog.models import Plant, Trait
 from core.models import Content, Text, User
 from geography.models import Biome, Country, Municipality, State, VegetationType
-from agroforestry.querysets import FarmQuerySet, SiteTraitQuerySet, SiteTraitValueQuerySet
+from agroforestry.querysets import FarmQuerySet, FieldQuerySet, SiteTraitQuerySet, SiteTraitValueQuerySet
 
 class CroppingPatternCrop(models.Model):
     pk = models.CompositePrimaryKey('pattern_id', 'pattern_row_id', 'position')
@@ -108,7 +108,6 @@ class Farm(models.Model):
     class Meta:
         managed = True
         db_table = '"agroforestry"."farms"'
-        unique_together = (('name', 'user'),)
 
 
 class Field(models.Model):
@@ -121,10 +120,11 @@ class Field(models.Model):
     cropping_pattern = models.ForeignKey(CroppingPattern, models.DO_NOTHING, blank=True, null=True)
     cropping_rule_set = models.ForeignKey(RuleSet, models.DO_NOTHING, blank=True, null=True)
 
+    objects = FieldQuerySet.as_manager()
+
     class Meta:
         managed = True
         db_table = '"agroforestry"."fields"'
-        unique_together = (('name', 'farm', 'user'),)
 
 
 class Function(models.Model):

@@ -24,6 +24,12 @@ class FarmQuerySet(SiteQuerySet):
         return super().denormalized().select_related(
             'user',
         )
+    
+class FieldQuerySet(SiteQuerySet):
+    def denormalized(self):
+        return super().denormalized().select_related(
+            'user',
+        )
 
 class SiteTraitQuerySet(QuerySet):
     def denormalized(self):

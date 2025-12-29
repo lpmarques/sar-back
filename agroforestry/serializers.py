@@ -1,5 +1,7 @@
 from django.contrib.gis.geos import GEOSGeometry
 from django.db import transaction
+from django.db.models import Q
+from django.db.models.functions import Now
 from jsonschema import FormatChecker, validate
 from rest_framework_gis.fields import GeometryField
 from rest_framework.serializers import BooleanField, CharField, DateTimeField, IntegerField, JSONField, ModelSerializer, SerializerMethodField, ValidationError
@@ -7,7 +9,8 @@ from core.serializers import UserPreviewSerializer
 from core.models import Text
 from geography.models import Biome, Country, Municipality, State, VegetationArea
 from geography.serializers import BiomeSerializer, CountrySerializer, MunicipalitySerializer, StateSerializer, VegetationTypeSerializer
-from agroforestry.models import Farm, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
+from agroforestry.models import Farm, Field, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
+from agroforestry.utils import none_if_empty
 from typing import Union
 import json
 
@@ -54,7 +57,7 @@ class SiteSerializer(ModelSerializer):
         if 'location' not in data and 'polygon' not in data:
             raise ValidationError({'non_field_errors': 'É obrigatório passar o campo location ou o campo polygon.'})
         if 'location' in data and 'polygon' in data:
-            raise ValidationError({'non_field_errors': 'Somente um dos campos location e polygon deve ser passado.'})
+            raise ValidationError({'non_field_errors': 'Somente um dos campos "location" e "polygon" deve ser passado.'})
         
         try:
             data['location'] = self.georep_to_geos(data.get('location'))
@@ -109,6 +112,19 @@ class SiteSerializer(ModelSerializer):
             biome_id = validated_data['biome_id'],
             vegetation_type_id = validated_data['vegetation_type_id'],
         )
+
+    def update(self, site, validated_data):
+        site.location = validated_data['location']
+        site.polygon = validated_data.get('polygon')
+        site.country_id = validated_data['country_id']
+        site.state_id = validated_data['state_id']
+        site.municipality_id = validated_data.get('municipality_id')
+        site.biome_id = validated_data['biome_id']
+        site.vegetation_type_id = validated_data['vegetation_type_id']
+        site.updated_at = Now()
+        site.save()
+
+        return site
     
     class Meta:
         model = Site
@@ -126,6 +142,8 @@ class SiteSerializer(ModelSerializer):
         ]
 
 class FarmSerializer(SiteSerializer):
+    # both
+    name = CharField()
     # write
     user_id = IntegerField(write_only=True)
     # read
@@ -137,10 +155,18 @@ class FarmSerializer(SiteSerializer):
 
         super().__init__(*args, **kwargs)
 
+    def to_internal_value(self, data):
+        data['name'] = none_if_empty(data['name'])
+
+        return super().to_internal_value(data)
+
     def validate(self, data):
+        instance_id = self.instance.id if self.instance else 0
+
         homonym_farm = Farm.objects.active().filter(
+            ~Q(id=instance_id),
             user_id=data['user_id'],
-            name=data['name']
+            name=data['name'],
         ).first()
         if homonym_farm:
             raise ValidationError({'name': f'O nome "{data["name"]}" já está sendo utilizado para outra propriedade.'})
@@ -157,6 +183,16 @@ class FarmSerializer(SiteSerializer):
                 user_id = validated_data['user_id'],
             )
 
+    def update(self, farm, validated_data):
+        with transaction.atomic():
+            super().update(farm.site, validated_data)
+
+            farm.name = validated_data['name']
+            farm.user_id = validated_data['user_id']
+            farm.save()
+            
+            return farm
+
     class Meta:
         model = Farm
         fields = [
@@ -165,6 +201,79 @@ class FarmSerializer(SiteSerializer):
             'name',
             'user_id',
             'user',
+        ] + SiteSerializer.Meta.fields
+
+class FieldSerializer(SiteSerializer):
+    # both
+    name = CharField()
+    farm_id = IntegerField()
+    # write
+    user_id = IntegerField(write_only=True)
+    # read
+    site_id = IntegerField(read_only=True)
+    user = UserPreviewSerializer(read_only=True)
+
+    def __init__(self,  *args, **kwargs):
+        kwargs['site_type'] = "field"
+
+        super().__init__(*args, **kwargs)
+
+    def to_internal_value(self, data):
+        data['name'] = none_if_empty(data['name'])
+
+        return super().to_internal_value(data)
+
+    def validate(self, data):
+        instance_id = self.instance.id if self.instance else 0
+
+        homonym_field = Field.objects.active().filter(
+            ~Q(id=instance_id),
+            farm_id=data['farm_id'],
+            name=data['name'],
+        ).first()
+        if homonym_field:
+            raise ValidationError({'name': f'O nome "{data["name"]}" já está sendo utilizado para outra área na mesma propriedade.'})
+
+        if 'polygon' not in data:
+            raise ValidationError({'polygon': 'Campo obrigatório.'})
+        
+        return super().validate(data)
+
+    def create(self, validated_data):
+        with transaction.atomic():
+            site = super().create(validated_data)
+            
+            return Field.objects.create(
+                site_id = site.id,
+                name = validated_data['name'],
+                farm_id = validated_data['farm_id'],
+                user_id = validated_data['user_id'],
+            )
+
+    def update(self, field, validated_data):
+        with transaction.atomic():
+            super().update(field.site, validated_data)
+
+            field.name = validated_data['name']
+            field.farm_id = validated_data['farm_id']
+            field.user_id = validated_data['user_id']
+            field.save()
+            
+            return field
+
+    class Meta:
+        model = Field
+        fields = [
+            'id',
+            'site_id',
+            'farm_id',
+            'name',
+            'user_id',
+            'user',
+            # 'cropping_summary',
+            # 'cropping_geometry',
+            # 'cropping_pattern',
+            # 'cropping_rule_set',
         ] + SiteSerializer.Meta.fields
 
 class SiteTraitTextValueOptionSerializer(ModelSerializer):
@@ -198,10 +307,9 @@ class SiteTraitSerializer(ModelSerializer):
 
 class SiteTraitValueSerializer(ModelSerializer):
     # both
-    site_id = IntegerField()
     value = CharField()
-    # write
-    trait_id = IntegerField(write_only=True)
+    site_id = IntegerField()
+    trait_id = IntegerField()
     # read
     trait_slug = CharField(read_only=True, source='trait.name')
     trait_name = CharField(read_only=True, source='trait.name_text.pt_br')
@@ -250,6 +358,7 @@ class SiteTraitValueSerializer(ModelSerializer):
     def validate(self, data):
         trait = self.trait
         value = self.loaded_value
+        instance_id = self.instance.id if self.instance else 0
 
         try:
             self.site = Site.objects.get(id=data['site_id'])
@@ -257,11 +366,12 @@ class SiteTraitValueSerializer(ModelSerializer):
             raise ValidationError({'site_id': "Não há local cadastrado com esse id."})
         
         active_trait_value = SiteTraitValue.objects.active().filter(
+            ~Q(id=instance_id),
             site_id=self.site.id,
             trait_id=trait.id,
         )
         if active_trait_value:
-            raise ValidationError({'non_field_value': f"Já existe um valor ativo do traço '{trait.name_text.pt_br}' (trait_id: {trait.id}) para o local (site_id: {self.site.id}). Delete o valor existente antes de submeter um novo."})
+            raise ValidationError({'non_field_value': f"Já existe um valor do traço '{trait.name_text.pt_br}' (trait_id: {trait.id}) para esse local (site_id: {self.site.id})."})
 
         try:
             validate(value, trait.schema, format_checker=FormatChecker())
@@ -273,9 +383,9 @@ class SiteTraitValueSerializer(ModelSerializer):
     def create(self, validated_data):
         with transaction.atomic():
             trait_value = SiteTraitValue.objects.create(
-                site_id = validated_data.get('site_id'),
-                trait_id = validated_data.get('trait_id'),
-                value = validated_data.get('value'),
+                site_id = validated_data['site_id'],
+                trait_id = validated_data['trait_id'],
+                value = validated_data['value'],
             )
 
             value_type = self.trait.schema['type']
@@ -284,9 +394,26 @@ class SiteTraitValueSerializer(ModelSerializer):
 
             return trait_value
 
+    def update(self, trait_value, validated_data):
+        with transaction.atomic():
+            value_type = self.trait.schema['type']
+            if trait_value.value != validated_data['value'] and (
+                value_type == "string" or value_type == "array" and self.trait.schema['items']['type'] == "string"
+            ):
+                trait_value.texts.clear()
+                trait_value.texts.add(*self.texts)
+
+            trait_value.site_id = validated_data['site_id']
+            trait_value.trait_id = validated_data['trait_id']
+            trait_value.value = validated_data['value']
+            trait_value.save()
+
+            return trait_value
+
     class Meta:
         model = SiteTraitValue
         fields = [
+            'id',
             'site_id',
             'trait_id',
             'trait_slug',
