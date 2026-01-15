@@ -72,9 +72,12 @@ class StateListView(StateView):
 class MunicipalityView(APIView):
     permission_classes = [AllowAny]
 
+    def get_queryset(self):
+        return Municipality.objects
+
     def get(self, request, municipality_id):
         try:
-            municipality = Municipality.objects.defer(*GEOM_FIELDS).get(id=municipality_id)
+            municipality = self.get_queryset().get(id=municipality_id)
         except Municipality.DoesNotExist:
             content = {'msg': 'Estado não cadastrado'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
@@ -83,11 +86,11 @@ class MunicipalityView(APIView):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-class MunicipalityListView(APIView):
+class MunicipalityListView(MunicipalityView):
     permission_classes = [AllowAny]
 
     def get(self, request, state_id):
-        municipalities = Municipality.objects.filter(state_id=state_id)
+        municipalities = self.get_queryset().filter(state_id=state_id)
         serializer = MunicipalitySerializer(municipalities, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -150,6 +153,8 @@ class VegetationTypeListView(VegetationTypeView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class LandSummaryView(APIView):
+    permission_classes = [AllowAny]
+
     def get(self, request):
         if not request.query_params.get('latlong'):
             content = {'latlong': 'Parâmetro obrigatório.'}
@@ -186,15 +191,15 @@ class LandSummaryView(APIView):
 
 
 class SoilPhView(APIView):
+    permission_classes = [AllowAny]
+
     def get(self, request):
-        filters = {}
-        if request.query_params:
-            filters.update(SoilPhParamsSerializer(request.query_params).data)
-        
-        point = filters.get('tile_extent__intersects')
-        if not point:
+        if not request.query_params.get('latlong'):
             content = {'latlong': 'Parâmetro obrigatório.'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
+        
+        filters = SoilPhParamsSerializer(request.query_params).data
+        point = filters.get('valued_extent__intersects')
 
         ph_pixel = SoilPhMap.objects.get_pixel_value(point, filters)
         if not ph_pixel.value:
@@ -206,6 +211,8 @@ class SoilPhView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
  
 class SoilAcidityLevelListView(APIView):
+    permission_classes = [AllowAny]
+    
     def get(self, request):
         soil_acidity_levels = SoilAcidityLevel.objects.denormalized()
         serializer = SoilAcidityLevelSerializer(soil_acidity_levels, many=True)
@@ -213,6 +220,8 @@ class SoilAcidityLevelListView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
   
 class SoilTextureTypeListView(APIView):
+    permission_classes = [AllowAny]
+
     def get(self, request):
         filters = {}
         if request.query_params:
@@ -224,13 +233,15 @@ class SoilTextureTypeListView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class SoilSummaryView(APIView):
+    permission_classes = [AllowAny]
+
     def get(self, request):
         if not request.query_params.get('latlong'):
             content = {'latlong': 'Parâmetro obrigatório.'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
 
         ph_filters = SoilPhParamsSerializer(request.query_params).data
-        ph_point = ph_filters.get('tile_extent__intersects')
+        ph_point = ph_filters.get('valued_extent__intersects')
         ph_pixel = SoilPhMap.objects.get_pixel_value(ph_point, ph_filters)
         
         texture_filters = SoilTextureTypeParamsSerializer(request.query_params).data
@@ -245,6 +256,8 @@ class SoilSummaryView(APIView):
 
 
 class ClimateNormalListView(APIView):
+    permission_classes = [AllowAny]
+
     def get(self, request):
         filters = ClimateNormalParamsSerializer(request.query_params).data
         target = filters.pop('target_point', None)
@@ -270,6 +283,8 @@ class ClimateNormalListView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class DroughtListView(APIView):
+    permission_classes = [AllowAny]
+
     def get(self, request):
         filters = {}
         if request.query_params:
@@ -285,18 +300,23 @@ class DroughtListView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class ElevationView(APIView):
+    permission_classes = [AllowAny]
     source_url = 'https://api.open-meteo.com/v1/elevation'
+    request_timeout_s = 10
 
     def get(self, request):
-        params = ElevationParamsSerializer(request.query_params).data
-        point = params.get('latlong')
-        
-        if not point:
+        if not request.query_params.get('latlong'):
             content = {'latlong': 'Parâmetro obrigatório.'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
 
+        params = ElevationParamsSerializer(request.query_params).data
+        point = params.get('latlong')
+
         try:
-            response = requests.get(f'{self.source_url}?longitude={point.x}&latitude={point.y}')
+            response = requests.get(
+                f'{self.source_url}?longitude={point.x}&latitude={point.y}',
+                timeout=self.request_timeout_s
+            )
             response.raise_for_status()
 
             serializer = ElevationSerializer(response.json())
@@ -307,18 +327,26 @@ class ElevationView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class ClimateSummaryView(APIView):
+    permission_classes = [AllowAny]
     elevation_source_url = 'https://api.open-meteo.com/v1/elevation'
+    elevation_request_timeout_s = 10
     
     def get(self, request):
         if not request.query_params.get('latlong'):
             content = {'latlong': 'Parâmetro obrigatório.'}
             return Response(content, status=status.HTTP_400_BAD_REQUEST)
 
-        elevation = None
         point = ElevationParamsSerializer(request.query_params).data.get('latlong')
-        response = requests.get(f'{self.elevation_source_url}?longitude={point.x}&latitude={point.y}')
-        if response.ok:
+        try:
+            response = requests.get(
+                f'{self.elevation_source_url}?longitude={point.x}&latitude={point.y}',
+                timeout=self.elevation_request_timeout_s
+            )
+            response.raise_for_status()
+            
             elevation = response.json()
+        except Exception:
+            elevation = None
         
         climate_normals = []
         normals_queryset = ClimateNormal.objects
