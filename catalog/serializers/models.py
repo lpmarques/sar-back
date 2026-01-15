@@ -1,5 +1,5 @@
 from django.db import transaction
-from rest_framework.serializers import CharField, IntegerField, JSONField, ModelSerializer, SerializerMethodField, SlugRelatedField, ValidationError
+from rest_framework.serializers import CharField, IntegerField, ModelSerializer, Serializer, SerializerMethodField, SlugRelatedField, ValidationError
 from unidecode import unidecode
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, Trait, TraitTextValueOption, TraitValue
 from catalog.utils import md5_to_color, none_if_empty, string_to_md5
@@ -275,7 +275,19 @@ class TaxonSerializer(ContentSerializer):
             if data[key] and not re.match(patt, data[key]):
                 raise ValidationError({f'{key}': f"Valor '{data[key]} inválido. Deve ser compatível com a expressão regular '{patt}.'"})
         
-        matching_names = Taxon.objects.select_related('content').filter(
+        matching_accepted = Taxon.objects.select_related('content').filter(
+            family=data['family'],
+            genus=data['genus'],
+            species=data['species'],
+            subspecies=data['subspecies'],
+            variety=data['variety'],
+            taxonomic_status=data['taxonomic_status'],
+            content__status__in=["accepted"],
+        )
+        if matching_accepted:
+            raise ValidationError({'non_field_errors': "Taxonomia idêntica ao nome aceito ou sinônimo de uma planta já cadastrada."})
+        
+        matching_proposals = Taxon.objects.select_related('content').filter(
             family=data['family'],
             genus=data['genus'],
             species=data['species'],
@@ -283,11 +295,10 @@ class TaxonSerializer(ContentSerializer):
             variety=data['variety'],
             taxonomic_status=data['taxonomic_status'],
             plant_id=data['plant_id'],
-            content__status__in=["accepted", "proposed"],
+            content__status__in=["proposed"],
         )
-
-        if matching_names:
-            raise ValidationError({'non_field_errors': "Taxonomia idêntica a uma das aceitas ou propostas para a mesma planta."})
+        if matching_proposals:
+            raise ValidationError({'non_field_errors': "Taxonomia idêntica a uma das propostas para a mesma planta."})
         
         return super().validate(data)
 
@@ -499,9 +510,23 @@ class NaturalOccurrenceRegionPreviewSerializer(NaturalOccurrenceRegionSerializer
             'vegetation_type',
         ]
 
+class PlantCreationTaxonSerializer(Serializer):
+    family = CharField(write_only=True)
+    species = CharField(write_only=True)
+    subspecies = CharField(write_only=True, required=False)
+    variety = CharField(write_only=True, required=False)
+    taxonomic_status = CharField(write_only=True)
+    source_id = IntegerField(write_only=True)
+    content_proposer_comment = CharField(write_only=True, required=False)
+
+class PlantCreationPopularNameSerializer(Serializer):
+    name = CharField(write_only=True)
+    source_id = IntegerField(write_only=True)
+    content_proposer_comment = CharField(write_only=True, required=False)
+
 class PlantCreationSerializer(ContentSerializer):
-    taxon = TaxonPreviewSerializer(write_only=True)
-    popular_name = PopularNamePreviewSerializer(write_only=True)
+    taxon = PlantCreationTaxonSerializer(write_only=True)
+    popular_name = PlantCreationPopularNameSerializer(write_only=True)
 
     def __init__(self,  *args, **kwargs):
         kwargs['content_type'] = "plant"

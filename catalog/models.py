@@ -7,9 +7,9 @@ from geography.models import Biome, Country, State, VegetationType
 
 class Plant(models.Model):
     content = models.OneToOneField(Content, models.DO_NOTHING)
-    accepted_taxon_name = models.CharField(unique=True, blank=True, null=True)
+    accepted_taxon_name = models.CharField(blank=True, null=True)
     accepted_family_name = models.CharField(blank=True, null=True)
-    color_hex = models.CharField(unique=True, blank=True, null=True)
+    color_hex = models.CharField(blank=True, null=True)
 
     objects = PlantQuerySet().as_manager()
 

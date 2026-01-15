@@ -280,9 +280,12 @@ class ContentSerializer(ModelSerializer):
             data['user_endorsement_id'] = user_endorsements[0].id if user_endorsements else None
 
         return data
-
+    
     def to_internal_value(self, data):
-        return data # must skip default method to avoid source_id nesting on write
+        data = super().to_internal_value(data)
+        content_data = data.pop('content')
+
+        return dict(**data, **content_data) # revert content fields nesting by default method
     
     def validate(self, data):
         if self.content_type != 'plant' and not data.get('source_id'):
