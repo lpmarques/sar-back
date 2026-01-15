@@ -1,11 +1,13 @@
+from typing import List
 from django.db import transaction
 from django.db.models.functions import Now
 from rest_framework.exceptions import NotFound, PermissionDenied
-from agroforestry.models import Farm, Field, Site, SiteTraitValue
+from agroforestry.models import Farm, Field, Site, SiteTrait, SiteTraitValue
+from core.models import Text
 
 def get_farm(farm_id, user_id):
     try:
-        farm = Farm.objects.get(id=farm_id)
+        farm = Farm.objects.denormalized().with_area_m2().get(id=farm_id)
     except Farm.DoesNotExist:
         raise NotFound('Propriedade não cadastrada.')
     
@@ -68,3 +70,11 @@ def get_trait_value(site_trait_value_id, user_id):
         raise PermissionDenied('Você não tem autorização para acessar informação referentes a esse local.')
     
     return trait_value
+
+def get_value_texts(trait: SiteTrait, value) -> List[Text]:
+    if trait.schema['type'] == "array" and trait.schema['items']['type'] == "string":
+        return Text.objects.filter(**{'pt_br__in': value})
+    elif trait.schema['type'] == "string":
+        return Text.objects.filter(**{'pt_br': value})
+
+    return []

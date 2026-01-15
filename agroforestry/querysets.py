@@ -1,9 +1,15 @@
 from django.apps import apps
+from django.contrib.gis.db.models.functions import Area
 from django.db.models import QuerySet, Prefetch
 
 class SiteQuerySet(QuerySet):
     def active(self):
         return self.filter(site__deleted_at=None)
+    
+    def with_area_m2(self):
+        return self.annotate(
+            area=Area('site__polygon')
+        )
     
     def denormalized(self):
         return self.select_related(
@@ -13,6 +19,11 @@ class SiteQuerySet(QuerySet):
             'site__biome',
             'site__vegetation_type',
             'site__country__name_text',
+        ).prefetch_related(
+            Prefetch(
+                'site__trait_values',
+                queryset=apps.get_model('agroforestry', 'SiteTraitValue').objects.active()
+            ),
         ).defer(
             'site__country__area',
             'site__state__area',

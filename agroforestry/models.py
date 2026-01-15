@@ -165,7 +165,7 @@ class Site(models.Model):
 
     type = models.CharField(choices=TYPE.choices)
     location = models.PointField()
-    polygon = models.GeometryField(blank=True, null=True)
+    polygon = models.GeometryField(geography=True, blank=True, null=True)
     country = models.ForeignKey(Country, models.DO_NOTHING)
     state = models.ForeignKey(State, models.DO_NOTHING, blank=True, null=True)
     municipality = models.ForeignKey(Municipality, models.DO_NOTHING, blank=True, null=True)
@@ -187,6 +187,7 @@ class SiteTrait(models.Model):
     section_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='section_text_site_traits')
     description_text = models.OneToOneField(Text, models.DO_NOTHING, blank=True, null=True, related_name='description_text_site_traits')
     schema = models.JSONField()
+    position = models.IntegerField()
     is_nullable = models.BooleanField()
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
@@ -215,7 +216,7 @@ class SiteTraitTextValueOption(models.Model):
 
 
 class SiteTraitValue(models.Model):
-    site = models.ForeignKey(Site, models.DO_NOTHING, blank=True, null=True)
+    site = models.ForeignKey(Site, models.DO_NOTHING, blank=True, null=True, related_name='trait_values')
     trait = models.ForeignKey(SiteTrait, models.DO_NOTHING)
     value = models.CharField()
     created_at = models.DateTimeField(db_default=Now())

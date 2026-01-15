@@ -5,12 +5,12 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from agroforestry.models import Farm, Field, SiteTrait, SiteTraitValue
-from agroforestry.serializers import FarmSerializer, FieldSerializer, SiteTraitSerializer, SiteTraitValueSerializer
+from agroforestry.serializers import DetachedSiteTraitValueSerializer, FarmSerializer, FieldSerializer, SiteTraitSerializer, SiteTraitValueSerializer
 from agroforestry.services import delete_farm, delete_field, get_farm, get_field, get_site_owner_id, get_trait_value
 
 class FarmView(APIView):
     def get_queryset(self):
-        return Farm.objects.active().denormalized()
+        return Farm.objects.active().denormalized().with_area_m2()
 
     def get(self, request, farm_id):
         try:
@@ -201,12 +201,12 @@ class SiteTraitValueView(APIView):
         except APIException as err:
             return Response({'msg': err.detail}, status=err.status_code)
 
-        serializer = SiteTraitValueSerializer(trait_value)
+        serializer = DetachedSiteTraitValueSerializer(trait_value)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
-        serializer = SiteTraitValueSerializer(data=request.data)
+        serializer = DetachedSiteTraitValueSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -275,7 +275,7 @@ class SiteTraitValueView(APIView):
 class SiteTraitValueListView(SiteTraitValueView):
     def get(self, request, site_id):
         trait_values = self.get_queryset().filter(site_id=site_id)
-        serializer = SiteTraitValueSerializer(trait_values, many=True)
+        serializer = DetachedSiteTraitValueSerializer(trait_values, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
     
