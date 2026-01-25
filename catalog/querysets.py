@@ -1,9 +1,9 @@
 from django.apps import apps
-from django.db.models import QuerySet, Prefetch
+from django.db.models import QuerySet, Prefetch, Q
 from core.querysets import ContentQuerySet
 
 class PlantQuerySet(ContentQuerySet):
-    def with_popular_names(self, custom_filters: dict):
+    def with_popular_names(self, custom_filters={}, q_filters=[]):
         filters = {'content__status__in': ['accepted']}
         filters.update(custom_filters)
 
@@ -12,11 +12,11 @@ class PlantQuerySet(ContentQuerySet):
                 'popular_names',
                 queryset=apps.get_model('catalog', 'PopularName').objects.select_related(
                     'content',
-                ).filter(**filters)
+                ).filter(*q_filters, **filters)
             ),
         )
 
-    def with_taxa(self, custom_filters: dict):
+    def with_taxa(self, custom_filters={}, q_filters=[]):
         filters = {'content__status__in': ['accepted']}
         filters.update(custom_filters)
         
@@ -25,11 +25,11 @@ class PlantQuerySet(ContentQuerySet):
                 'taxa',
                 queryset=apps.get_model('catalog', 'Taxon').objects.select_related(
                     'content',
-                ).filter(**filters)
+                ).filter(*q_filters, **filters)
             )
         )
     
-    def with_trait_values(self, custom_filters: dict):
+    def with_trait_values(self, custom_filters={}, q_filters=[]):
         filters = {'content__status__in': ['accepted']}
         filters.update(custom_filters)
         
@@ -42,11 +42,11 @@ class PlantQuerySet(ContentQuerySet):
                     'trait__name_text',
                 ).prefetch_related(
                     'texts',
-                ).filter(**filters)
+                ).filter(*q_filters, **filters)
             )
         )
     
-    def with_natural_occurrence_regions(self, custom_filters: dict):
+    def with_natural_occurrence_regions(self, custom_filters={}, q_filters=[]):
         filters = {'content__status__in': ['accepted']}
         filters.update(custom_filters)
         
@@ -55,11 +55,11 @@ class PlantQuerySet(ContentQuerySet):
                 'natural_occurrence_regions',
                 queryset=apps.get_model('catalog', 'NaturalOccurrenceRegion').objects.select_related(
                     'content',
-                ).filter(**filters)
+                ).filter(*q_filters, **filters)
             )
         )
     
-    def with_invasion_risk_regions(self, custom_filters: dict):
+    def with_invasion_risk_regions(self, custom_filters={}, q_filters=[]):
         filters = {'content__status__in': ['accepted']}
         filters.update(custom_filters)
         
@@ -68,7 +68,7 @@ class PlantQuerySet(ContentQuerySet):
                 'invasion_risk_regions',
                 queryset=apps.get_model('catalog', 'InvasionRiskRegion').objects.select_related(
                     'content',
-                ).filter(**filters)
+                ).filter(*q_filters, **filters)
             )
         )
 

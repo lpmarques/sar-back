@@ -5,17 +5,17 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from agroforestry.models import Farm, Field, Site, SiteTrait, SiteTraitValue
 from core.models import Text
 
-def get_farm(farm_id, user_id):
+def get_farm(farm_id, user_id, queryset=Farm.objects):
     try:
-        farm = Farm.objects.denormalized().with_area_m2().get(id=farm_id)
+        farm = queryset.get(id=farm_id)
     except Farm.DoesNotExist:
         raise NotFound('Propriedade não cadastrada.')
     
     if farm.site.deleted_at:
         raise NotFound('Propriedade indisponível.')
     
-    if farm.user_id != user_id:
-        raise PermissionDenied('Você não tem autorização para acessar essa propriedade.')
+    # if farm.user_id != user_id:
+    #     raise PermissionDenied('Você não tem autorização para acessar essa propriedade.')
     
     return farm
     
