@@ -15,7 +15,7 @@ from core.models import Text
 from geography.models import Biome, Country, Municipality, State, VegetationArea
 from geography.serializers import BiomeSerializer, CountrySerializer, MunicipalitySerializer, StateSerializer, VegetationTypeSerializer
 from agroforestry.models import Farm, Field, Function, PlantSiteFitting, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
-from agroforestry.utils import none_if_empty
+from agroforestry.utils import none_if_empty, none_if_nan
 from typing import List, Union
 import json
 
@@ -72,14 +72,30 @@ class SitePlantFitnessSerializer(Serializer):
     def render_function_input(self, template, values):
         return { k: values[v] if v in values.keys() else v for k, v in template.items() }
 
-    def parse_values(self, plant_trait_value, site_trait_value, pre_transforms):
+    def parse_plant_trait_value(self, value, data_type): # TODO: somewhat repeated code: try moving to static method in trait serializer
+        if data_type == "varchar[]":
+            return value
+        elif data_type == "varchar":
+            return value[0]
+
+        return json.loads(value)
+
+    def parse_site_trait_value(self, value, schema): # TODO: somewhat repeated code: try moving to static method in trait serializer
+        if schema['type'] == "array" and schema['items']['type'] == "string":
+            return value
+        elif schema['type'] == "string":
+            return value[0]
+
+        return json.loads(value)
+
+    def parse_values(self, fitting):
         values = {
-            '{plant_trait}': PlantTraitValuePreviewSerializer(plant_trait_value).data['value'],
-            '{site_trait}': SiteTraitValuePreviewSerializer(site_trait_value).data['value'],
+            '{plant_trait}': self.parse_plant_trait_value(fitting['plant_trait_value'], fitting['plant_trait_type']),
+            '{site_trait}': self.parse_site_trait_value(fitting['site_trait_value'], fitting['site_trait_schema']),
         }
 
-        if pre_transforms:
-            for prop, transform in pre_transforms.items():
+        if fitting['fitting_pre_transforms']:
+            for prop, transform in fitting['fitting_pre_transforms'].items():
                 values[f'{{{prop}}}'] = self.js_ctx.call(
                     transform['function'],
                     self.render_function_input(transform['input'], values)
@@ -87,39 +103,15 @@ class SitePlantFitnessSerializer(Serializer):
             
         return values
 
-    def calc_traits_fitness_score(self, fitting: PlantSiteFitting):
-        plant_trait_value = fitting.plant_trait.values.first()
-        if not plant_trait_value:
-            return 0
-
-        site_trait_value = fitting.site_trait.values.first()
-        if not site_trait_value:
-            return 0
-        
-        values = self.parse_values(plant_trait_value, site_trait_value, fitting.pre_transforms)
-        function_input = self.render_function_input(fitting.fitting_function_input, values)
+    def calc_traits_fitness_score(self, fitting):
+        values = self.parse_values(fitting)
+        function_input = self.render_function_input(fitting['fitting_function_input'], values)
 
         score = self.js_ctx.call(
-            fitting.fitting_function.name,
+            fitting['fitting_function_name'],
             function_input
         )
         return score
-
-    def calc_plant_trait_fitness_score(self, plant_trait_value):
-        site_fittings = plant_trait_value.trait.site_fitting.all()
-        plant_trait_scores = []
-        for fitting in site_fittings:
-            site_trait_value = fitting.site_trait.values.first()
-            if site_trait_value:
-                values = self.parse_values(plant_trait_value, site_trait_value, fitting.pre_transforms)
-                function_input = self.render_function_input(fitting.fitting_function_input, values)
-                score = self.js_ctx.call(
-                    fitting.fitting_function.name,
-                    function_input
-                )
-                plant_trait_scores.append(score*fitting.fitting_weight)
-
-        return sum(plant_trait_scores)
     
     def calc_plant_nativity_score(self, is_native, eicat_category=None):
         if eicat_category:
@@ -129,25 +121,14 @@ class SitePlantFitnessSerializer(Serializer):
 
         return 0
 
-    def to_representation(self, plant: Plant):
-        data = {
-            'plant_id': plant.id,
-            'accepted_taxon_name': plant.accepted_taxon_name,
-            'color_hex': plant.color_hex,
-        }
+    def to_representation(self, df):
+        data = dict(zip(
+            df.index.names,
+            [none_if_nan(value) for value in df.index.to_list()[0]]
+        )) # extract plant data from dataframe index
+        df.reset_index(drop=True, inplace=True)
 
-        natural_occurrence = plant.natural_occurrence_regions.first()
-        invasion_risk = plant.invasion_risk_regions.first()
-        data['is_native'] = bool(natural_occurrence)
-        data['is_invasive'] = bool(invasion_risk)
-        data['eicat_category'] = invasion_risk.eicat_category if invasion_risk else None
-        
-        data['traits_fitness'] = [{
-            'plant_trait_slug': trait_value.trait.name,
-            'fitness_score': self.calc_plant_trait_fitness_score(trait_value),
-        } for trait_value in plant.trait_values.accepted()]
-
-        data['fitness_score'] = sum([ fitness['fitness_score'] for fitness in data['traits_fitness'] ])
+        data['fitness_score'] = sum(df.apply(func=self.calc_traits_fitness_score, axis=1))
         data['nativity_score'] = self.calc_plant_nativity_score(data['is_native'], data['eicat_category'])
 
         return super().to_representation(data)
@@ -269,13 +250,6 @@ class SiteTraitValueSerializer(ModelSerializer):
             'section_name',
             'schema',
             'value',
-        ]
-
-class SiteTraitValuePreviewSerializer(SiteTraitValueSerializer):
-    class Meta(SiteTraitValueSerializer.Meta):
-        fields = [
-            'trait_id',
-            'value'
         ]
 
 class DetachedSiteTraitValueSerializer(SiteTraitValueSerializer):

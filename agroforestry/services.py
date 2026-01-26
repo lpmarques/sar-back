@@ -1,9 +1,12 @@
 from typing import List
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models.functions import Now
 from rest_framework.exceptions import NotFound, PermissionDenied
 from agroforestry.models import Farm, Field, Site, SiteTrait, SiteTraitValue
+from agroforestry.queries import PlantsFitnessQuery
+from agroforestry.utils import json_to_dict
 from core.models import Text
+import pandas as pd
 
 def get_farm(farm_id, user_id, queryset=Farm.objects):
     try:
@@ -14,8 +17,8 @@ def get_farm(farm_id, user_id, queryset=Farm.objects):
     if farm.site.deleted_at:
         raise NotFound('Propriedade indisponível.')
     
-    # if farm.user_id != user_id:
-    #     raise PermissionDenied('Você não tem autorização para acessar essa propriedade.')
+    if farm.user_id != user_id:
+        raise PermissionDenied('Você não tem autorização para acessar essa propriedade.')
     
     return farm
     
@@ -78,3 +81,19 @@ def get_value_texts(trait: SiteTrait, value) -> List[Text]:
         return Text.objects.filter(**{'pt_br': value})
 
     return []
+
+def get_site_plants_fitness_data(site_id: int, plant_id: int=None):
+    query = PlantsFitnessQuery(site_id, plant_id)
+    
+    df = query.execute()
+
+    df['site_trait_schema'] = df['site_trait_schema'].apply(json_to_dict)
+    df['fitting_pre_transforms'] = df['fitting_pre_transforms'].apply(json_to_dict)
+    df['fitting_function_input'] = df['fitting_function_input'].apply(json_to_dict)
+
+    plant_ids = df.index.get_level_values('plant_id')
+
+    if plant_id:
+        return df
+
+    return [df[plant_ids == pid] for pid in plant_ids.unique()]

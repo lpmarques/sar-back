@@ -148,4 +148,4 @@ class TraitValueText(models.Model):
 
     class Meta:
         managed = True
-        db_table = '"catalog"."trait_values_texts"'
+        db_table = '"catalog"."trait_values_texts"' # TODO: change this table name to trait_value_texts
