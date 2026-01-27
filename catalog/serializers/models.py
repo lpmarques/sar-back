@@ -195,6 +195,17 @@ class TraitValueSerializer(ContentSerializer):
                 trait_value.texts.add(*self.texts)
 
             return trait_value
+        
+    def update(self, trait_value, data):
+        with transaction.atomic():
+            current_accepted_content = TraitValue.objects.get(trait_id=trait_value.trait_id, plant_id=trait_value.plant_id).content
+            current_accepted_content['status'] = 'rejected'
+            current_accepted_content['rejector_id'] = data['content_acceptor_id']
+            current_accepted_content.save()
+
+            super().update(trait_value.content, data)
+
+            return trait_value
 
     class Meta(ContentSerializer.Meta):
         model = TraitValue

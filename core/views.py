@@ -2,6 +2,7 @@ from django.contrib.auth import authenticate
 from django.db.models.functions import Now
 from rest_framework import status
 from rest_framework.authtoken.models import Token
+from rest_framework.exceptions import APIException
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -198,21 +199,45 @@ class ContentView(APIView):
         }
 
         return Response(content, status=status.HTTP_201_CREATED)
+
+    def patch(self, request, content_id):
+        try:
+            content = Content.objects.get(id=content_id, status="proposed")
+        except Content.DoesNotExist:
+            return Response({'msg': 'Não há proposta pendente com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not request.user.is_staff:
+            return Response({'msg': 'Você não tem permissão para aceitar essa proposta.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = self.serializer_class(
+            content,
+            data={'content_acceptor_id': request.user.id},
+            partial=True
+        )
+
+        object_res = self.validate_and_save_serializer(serializer)
+        if isinstance(object_res, Response):
+            return object_res
+
+        content = {
+            'content_id': object_res.content_id,
+            'msg': 'Proposta aprovada com sucesso.'
+        }
+
+        return Response(content, status=status.HTTP_201_CREATED)
     
     def delete(self, request, content_id):
         try:
             content = Content.objects.get(id=content_id, status="proposed")
         except Content.DoesNotExist:
-            return Response({'msg': 'Não há proposta cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'msg': 'Não há proposta pendente com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
         
-        if content.proposer_id != request.user.id:
+        if content.proposer_id != request.user.id and not request.user.is_staff:
             return Response({'msg': 'Você não tem permissão para rejeitar essa proposta.'}, status=status.HTTP_403_FORBIDDEN)
-
-        if content.rejected_at:
-            return Response({'msg': 'Proposta já rejeitada.'}, status=status.HTTP_400_BAD_REQUEST)
 
         content.status = "rejected"
         content.rejected_at = Now()
+        content.rejector_id = request.user.id
         content.save()
 
         content = {

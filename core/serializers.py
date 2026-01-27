@@ -203,6 +203,7 @@ class UserSerializer(ModelSerializer):
             'email',
             'first_name',
             'last_name',
+            'is_staff',
             'occupation',
             'company',
             'country',
@@ -301,6 +302,13 @@ class ContentSerializer(ModelSerializer):
             proposer_id = validated_data.get('content_proposer_id'),
             proposer_comment = validated_data.get('content_proposer_comment'),
         )
+    
+    def update(self, content, data):
+        content['status'] = 'accepted'
+        content['acceptor_id'] = data['content_acceptor_id']
+        content.save()
+
+        return content
 
     class Meta:
         model = Content
