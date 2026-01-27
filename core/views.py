@@ -12,12 +12,23 @@ from core.serializers import *
 class UserView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, user_id):
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            content = {'msg': 'Usuário não cadastrado.'}
-            return Response(content, status=status.HTTP_404_NOT_FOUND)
+    def get(self, request, user_id=None):
+        if user_id:
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                content = {'msg': 'Usuário não cadastrado.'}
+                return Response(content, status=status.HTTP_404_NOT_FOUND)
+        else:
+            email = request.query_params.get('email')
+            if not email:
+                content = {'email': 'Parâmetro obrigatório.'}
+                return Response(content, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                user = User.objects.get(email=email)
+            except User.DoesNotExist:
+                content = {'msg': 'Usuário não cadastrado.'}
+                return Response(content, status=status.HTTP_404_NOT_FOUND)
 
         if user.deleted_at:
             content = {'msg': 'Dados indisponíveis.'}
@@ -247,7 +258,7 @@ class ContentEndorsementView(APIView):
 
         content = {
             'endorsement_id': endorsement.id,
-            'msg': 'Conteúdo aprovado com sucesso.'
+            'msg': 'Conteúdo apoiado com sucesso.'
         }
     
         return Response(content, status=status.HTTP_201_CREATED)
@@ -256,13 +267,13 @@ class ContentEndorsementView(APIView):
         try:
             endorsement = ContentEndorsement.objects.denormalized().get(id=endorsement_id)
         except ContentEndorsement.DoesNotExist:
-            return Response({'msg': 'Não há aprovação cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'msg': 'Não há apoio cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
         
         if endorsement.endorser.id != request.user.id:
-            return Response({'msg': 'Você não tem autorização para remover essa aprovação.'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'msg': 'Você não tem autorização para remover esse apoio.'}, status=status.HTTP_401_UNAUTHORIZED)
 
         if endorsement.deleted_at:
-            return Response({'msg': 'Aprovação já removida.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'msg': 'Apoio já removido.'}, status=status.HTTP_400_BAD_REQUEST)
 
         endorsement.deleted_at = Now()
         endorsement.content.endorsements_count -= 1
@@ -270,7 +281,7 @@ class ContentEndorsementView(APIView):
         endorsement.save()
 
         content = {
-            'msg': 'Aprovação removida com sucesso.'
+            'msg': 'Apoio removido com sucesso.'
         }
     
         return Response(content, status=status.HTTP_200_OK)

@@ -91,8 +91,6 @@ ROOT_URLCONF = 'config.urls'
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
 GDAL_LIBRARY_PATH = env('GDAL_LIBRARY_PATH')
 GEOS_LIBRARY_PATH = env('GEOS_LIBRARY_PATH')
 
@@ -140,6 +138,8 @@ TIME_ZONE = 'UTC'
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+# STATICFILES_DIRS = [BASE_DIR / 'static']
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -176,9 +176,9 @@ LOGGING = {
             "stream": "ext://sys.stderr"
         },
         'console': {
+            'class': 'logging.StreamHandler',
             'level': 'DEBUG',
             'filters': ['require_debug_true'],
-            'class': 'logging.StreamHandler',
         }
     },
     'loggers': {
@@ -189,9 +189,9 @@ LOGGING = {
               'stderr',
             ],
         },
-        'django.db.backends': {
-            'level': LOG_LEVEL,
-            'handlers': ['console'],
-        }
+        # 'django.db.backends': { # uncomment to log sql queries
+        #     'level': LOG_LEVEL,
+        #     'handlers': ['console'],
+        # }
     }
 }

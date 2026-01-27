@@ -1,6 +1,6 @@
 from django.db import transaction
 from django.db.models import Prefetch, Q
-from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, IntegerField, JSONField, ModelSerializer, Serializer, SerializerMethodField, ValidationError
+from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, IntegerField, JSONField, ModelSerializer, Serializer, ValidationError
 from core.models import Content, ContentEndorsement, Source, SourceField, SourceFieldValue, SourceType, User
 from jsonschema import validate, FormatChecker
 import json
@@ -324,10 +324,10 @@ class ContentEndorsementSerializer(ModelSerializer):
             raise ValidationError({'content_id': "Não há conteúdo cadastrado com esse id."})
         
         if data.get('endorser_id') == content.proposer_id:
-            raise ValidationError({'endorser_id': "Somente outro usuário pode aprovar conteúdo criado por você."})
+            raise ValidationError({'endorser_id': "Somente outro usuário pode apoiar conteúdo criado por você."})
 
         if ContentEndorsement.objects.active().filter(content_id=data.get('content_id'), endorser_id=data.get('endorser_id')):
-            raise ValidationError({'non_field_errors': "Aprovação já cadastrada."})
+            raise ValidationError({'non_field_errors': "Apoio já cadastrado."})
 
         return data
         
