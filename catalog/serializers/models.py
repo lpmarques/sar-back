@@ -197,15 +197,21 @@ class TraitValueSerializer(ContentSerializer):
             return trait_value
         
     def update(self, trait_value, data):
+        try:
+            accepted_trait_value = TraitValue.objects.get(trait_id=trait_value.trait_id, plant_id=trait_value.plant_id)
+        except TraitValue.DoesNotExist:
+            pass
+
         with transaction.atomic():
-            current_accepted_content = TraitValue.objects.get(trait_id=trait_value.trait_id, plant_id=trait_value.plant_id).content
-            current_accepted_content['status'] = 'rejected'
-            current_accepted_content['rejector_id'] = data['content_acceptor_id']
-            current_accepted_content.save()
+            if accepted_trait_value:
+                current_accepted_content = accepted_trait_value.content
+                current_accepted_content['status'] = "rejected"
+                current_accepted_content['rejector_id'] = data['content_acceptor_id']
+                current_accepted_content.save()
 
             super().update(trait_value.content, data)
 
-            return trait_value
+        return trait_value
 
     class Meta(ContentSerializer.Meta):
         model = TraitValue
@@ -327,6 +333,42 @@ class TaxonSerializer(ContentSerializer):
                 variety = validated_data['variety'],
                 taxonomic_status = validated_data['taxonomic_status'],
             )
+        
+    def update(self, taxon, data):
+        if taxon.taxonomic_status == "accepted":
+            try:
+                accepted_taxon = Taxon.objects.get(plant_id=taxon.plant_id, taxonomic_status="accepted")
+            except Taxon.DoesNotExist:
+                pass
+
+        with transaction.atomic():
+            # reject current accepted taxon if existent
+            if accepted_taxon:
+                current_accepted_content = accepted_taxon.content
+                current_accepted_content.status = "rejected"
+                current_accepted_content.rejector_id = data['content_acceptor_id']
+                current_accepted_content.save()
+
+            # effectively accept proposed content
+            super().update(taxon.content, data)
+
+        if accepted_taxon:
+            # recreate previous accepted taxon as synonym
+            # separate transaction has to be opened to avoid eternal loop
+            with transaction.atomic():
+                previous_accepted_values = accepted_taxon.values()
+                previous_accepted_values.update({
+                    'taxonomic_status': 'synonym',
+                    'source_id': taxon.content.source_id,
+                    'content_proposer_id': taxon.content.proposer_id,
+                    'content_proposer_comment': taxon.content.proposer_comment,
+                })
+                new_synonym_taxon = self.create(previous_accepted_values)
+
+                # automatically accept the proposal, efectivelly reincluding the previous taxon as synonym
+                self.update(new_synonym_taxon, data)
+
+        return taxon
 
     class Meta:
         model = Taxon
@@ -579,14 +621,11 @@ class PlantCreationSerializer(ContentSerializer):
                 (f" subsp. {taxon.subspecies}" if taxon.subspecies else "") +
                 (f" var. {taxon.variety}" if taxon.variety else "")
             )
-            
-            plant_serializer = PlantSerializer(plant, partial=True, data={
-                'accepted_taxon_name': accepted_taxon_name,
-                'accepted_family_name': taxon.family,
-                'color_hex': md5_to_color(string_to_md5(accepted_taxon_name)),
-            })
-            if plant_serializer.is_valid(raise_exception=True):
-                plant = plant_serializer.save()
+
+            plant.accepted_taxon_name = accepted_taxon_name
+            plant.accepted_family_name = taxon.family
+            plant.color_hex = md5_to_color(string_to_md5(accepted_taxon_name))
+            plant.save()
 
             return plant
 

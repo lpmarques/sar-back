@@ -1,8 +1,10 @@
 from django.contrib.postgres.aggregates import ArrayAgg
 from rest_framework import status
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
+from catalog.services import get_plant
 from core.views import ContentListView, ContentView
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, TraitValue
 from catalog.serializers.models import *
@@ -49,19 +51,35 @@ class PlantView(ContentView):
         data = request.data
         data.update({'content_proposer_id': request.user.id})
 
-        plant_serializer = PlantCreationSerializer(data=data)
-        plant_res = self.validate_and_save_serializer(plant_serializer)
-        if isinstance(plant_res, Response):
-            return plant_res
+        serializer = PlantCreationSerializer(data=data)
+        try:
+            plant = self.validate_and_save_serializer(serializer)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
 
         content = {
-            'plant_id': plant_res.id,
-            'content_id': plant_res.content_id,
+            'plant_id': plant.id,
+            'content_id': plant.content_id,
             'msg': 'Proposta cadastrada com sucesso.'
         }
     
         return Response(content, status=status.HTTP_201_CREATED)
 
+    def patch(self, request, plant_id):
+        try:
+            plant = get_plant(plant_id=plant_id)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
+        
+        return super().patch(request, plant.content_id)
+
+    def delete(self, request, plant_id):
+        try:
+            plant = get_plant(plant_id=plant_id)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
+        
+        return super().delete(request, plant.content_id)
 
 class PlantListView(PlantView):
     def get(self, request):

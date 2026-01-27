@@ -304,8 +304,8 @@ class ContentSerializer(ModelSerializer):
         )
     
     def update(self, content, data):
-        content['status'] = 'accepted'
-        content['acceptor_id'] = data['content_acceptor_id']
+        content.status = 'accepted'
+        content.acceptor_id = data['content_acceptor_id']
         content.save()
 
         return content

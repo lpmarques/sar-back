@@ -1,6 +1,8 @@
 from django.urls import include, path
+from rest_framework.exceptions import server_error
 from . import views
 
+handler500 = server_error
 urlpatterns = [
     path('user', views.OwnUserView.as_view()),
 	path('user/token', views.UserTokenView.as_view()),

@@ -153,7 +153,8 @@ class UserTokenView(APIView):
                 'id': user.id,
                 'email': user.email,
                 'first_name': user.first_name,
-                'last_name': user.last_name 
+                'last_name': user.last_name,
+                'is_staff': user.is_staff,
             },
             'msg': ('Login realizado com sucesso.')
         }
@@ -174,27 +175,22 @@ class ContentView(APIView):
     permission_classes = [IsAuthenticated]
 
     def validate_and_save_serializer(self, serializer: ModelSerializer):
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.is_valid(raise_exception=True)
 
-        try:
-            object = serializer.save()
-        except Exception as err:
-            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return serializer.save()
         
-        return object
-
     def post(self, request):
         data = request.data
         data.update({'content_proposer_id': request.user.id})
         serializer = self.serializer_class(data=data)
 
-        object_res = self.validate_and_save_serializer(serializer)
-        if isinstance(object_res, Response):
-            return object_res
+        try:
+            object = self.validate_and_save_serializer(serializer)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
 
         content = {
-            'content_id': object_res.content_id,
+            'content_id': object.content_id,
             'msg': 'Proposta cadastrada com sucesso.'
         }
 
@@ -215,12 +211,12 @@ class ContentView(APIView):
             partial=True
         )
 
-        object_res = self.validate_and_save_serializer(serializer)
-        if isinstance(object_res, Response):
-            return object_res
+        try:
+            object = self.validate_and_save_serializer(serializer)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
 
         content = {
-            'content_id': object_res.content_id,
             'msg': 'Proposta aprovada com sucesso.'
         }
 
