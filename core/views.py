@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Q
 from django.db.models.functions import Now
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -398,4 +399,32 @@ class SourceTypeListView(APIView):
         serializer = SourceTypeSerializer(source_types, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
+class ContentPreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Content.objects.select_related(
+            'proposer'
+        ).filter(
+            ~Q(proposer__email='perma.lucas@gmail.com') # TODO: think less ugy solution to this
+        )
+
+    def get(self, request, content_id):
+        try:
+            content = self.get_queryset().get(id=content_id)
+        except Content.DoesNotExist:
+            return Response({'msg': 'Conteúdo não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = ContentPreviewSerializer(content)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class ContentPreviewListView(ContentPreviewView):
+    def get(self, request):
+        filters = ContentPreviewParamsSerializer(self.request.query_params).data
+        
+        contents = self.get_queryset().filter(**filters)
+        serializer = ContentPreviewSerializer(contents, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)

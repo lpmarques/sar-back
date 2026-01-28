@@ -1,10 +1,21 @@
 from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.db.models.functions import Now
-from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, IntegerField, JSONField, ModelSerializer, Serializer, ValidationError
+from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, Field, IntegerField, JSONField, ModelSerializer, Serializer, ValidationError
 from core.models import Content, ContentEndorsement, Source, SourceField, SourceFieldValue, SourceType, User
 from jsonschema import validate, FormatChecker
 import json
+
+class StringListField(Field):
+    def __init__(self, separator=",", *args, **kwargs):
+        self.separator = separator
+        super().__init__(*args, **kwargs)
+
+    def to_internal_value(self, value: list) -> str:
+        return self.separator.join(value) if value else None
+    
+    def to_representation(self, value: str) -> list:
+        return value.split(self.separator) if value else None
 
 class SourceFieldSerializer(ModelSerializer):
     name = CharField(read_only=True, source='name_text.pt_br')
@@ -220,6 +231,7 @@ class UserPreviewSerializer(UserSerializer):
             'email',
             'first_name',
             'last_name',
+            'is_staff',
         ]
 
 class UserCreationSerializer(Serializer):
@@ -246,6 +258,30 @@ class UserUpdateSerializer(Serializer):
 class UserTokenCreationSerializer(Serializer):
     email = EmailField(max_length=255)
     password = CharField(max_length=128)
+
+class ContentPreviewParamsSerializer(Serializer):
+    status__in = StringListField(required=False, source='status')
+    proposer_id = CharField(required=False)
+
+class ContentPreviewSerializer(ModelSerializer):
+    proposer = UserPreviewSerializer(read_only=True)
+    acceptor = UserPreviewSerializer(read_only=True)
+    rejector = UserPreviewSerializer(read_only=True)
+
+    class Meta:
+        model = Content
+        fields = [
+            'id',
+            'type',
+            'status',
+            'proposer',
+            'proposer_comment',
+            'acceptor',
+            'rejector',
+            'proposed_at',
+            'accepted_at',
+            'rejected_at',
+        ]
 
 class ContentParamsSerializer(Serializer):
     with_user_endorsement_info = BooleanField(required=False)

@@ -1,15 +1,5 @@
-from rest_framework.serializers import Serializer, Field, CharField, BooleanField
-
-class StringListField(Field):
-    def __init__(self, separator=",", *args, **kwargs):
-        self.separator = separator
-        super().__init__(*args, **kwargs)
-
-    def to_internal_value(self, value: list) -> str:
-        return self.separator.join(value) if value else None
-    
-    def to_representation(self, value: str) -> list:
-        return value.split(self.separator) if value else None
+from rest_framework.serializers import Serializer, Field, CharField, BooleanField, IntegerField
+from core.serializers import StringListField
 
 class TaxonParamsSerializer(Serializer):
     content__status__in = StringListField(required=False, allow_null=False, source='status')
@@ -36,6 +26,7 @@ class TraitValueParamsSerializer(Serializer):
 
 class PlantParamsSerializer(Serializer):
     plant_content__status__in = StringListField(required=False, allow_null=False, source='status')
+    plant_content_id = IntegerField(required=False, allow_null=False, source='content_id')
 
     with_taxa = BooleanField(required=False, allow_null=False)
     with_popular_names = BooleanField(required=False, allow_null=False)

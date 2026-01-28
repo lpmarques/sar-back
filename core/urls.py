@@ -9,6 +9,8 @@ urlpatterns = [
 	path('user/endorsements', views.UserContentEndorsementListView.as_view()),
     path('users', views.UserView.as_view()),
     path('users/<int:user_id>', views.UserView.as_view()),
+    path('contents', views.ContentPreviewListView().as_view()),
+    path('contents/<int:content_id>', views.ContentPreviewView().as_view()),
     path('endorsement', views.ContentEndorsementView.as_view()),
     path('endorsements', views.ContentEndorsementListView.as_view()),
     path('endorsements/<int:endorsement_id>', views.ContentEndorsementView.as_view()),
