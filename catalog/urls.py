@@ -14,7 +14,7 @@ urlpatterns = [
     path('trait-values', views.TraitValueView.as_view()),
     path('trait-values/<int:content_id>', views.TraitValueView.as_view()),
     path('taxa', views.TaxonListView.as_view()),
-    path('taxa', views.TaxonView.as_view()),
+    path('taxon', views.TaxonView.as_view()), # this url must be kept as singular so django can find post/patch method functions
     path('taxa/<int:content_id>', views.TaxonView.as_view()),
     # path('popular-names', views.PopularNameListView.as_view()),
     path('popular-names', views.PopularNameView.as_view()),

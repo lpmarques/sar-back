@@ -15,6 +15,7 @@ class ContentQuerySet(QuerySet):
         return self.select_related(
             'content',
             'content__proposer',
+            # 'content__acceptor',
         )
     
     def with_user_endorsement_info(self, user):

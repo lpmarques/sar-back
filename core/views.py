@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models.functions import Now
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -199,20 +200,21 @@ class ContentView(APIView):
     def patch(self, request, content_id):
         try:
             content = Content.objects.get(id=content_id, status="proposed")
-        except Content.DoesNotExist:
+            obj = self.model_class.objects.get(content_id=content_id)
+        except ObjectDoesNotExist:
             return Response({'msg': 'Não há proposta pendente com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
         
         if not request.user.is_staff:
             return Response({'msg': 'Você não tem permissão para aceitar essa proposta.'}, status=status.HTTP_403_FORBIDDEN)
         
         serializer = self.serializer_class(
-            content,
+            obj,
             data={'content_acceptor_id': request.user.id},
             partial=True
         )
 
         try:
-            object = self.validate_and_save_serializer(serializer)
+            accepted_obj = self.validate_and_save_serializer(serializer)
         except APIException as err:
             return Response({'msg': err.detail}, status=err.status_code)
 

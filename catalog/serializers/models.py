@@ -1,4 +1,6 @@
 from django.db import transaction
+from django.db.models import Q
+from django.db.models.functions import Now
 from rest_framework.serializers import CharField, IntegerField, ModelSerializer, Serializer, SerializerMethodField, SlugRelatedField, ValidationError
 from unidecode import unidecode
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, Trait, TraitTextValueOption, TraitValue
@@ -112,6 +114,10 @@ class TraitValueSerializer(ContentSerializer):
         return data
     
     def to_internal_value(self, data):
+        data = super().to_internal_value(data)
+        if self.partial: # skip fields parsing when partial serializer (proposal acceptance only)
+            return data
+        
         value = data.get('value')
         if value is None:
             raise ValidationError({'value': "Campo obrigatório."})
@@ -136,6 +142,9 @@ class TraitValueSerializer(ContentSerializer):
         return super().to_internal_value(data) # default method must run after custom so that it validates 'value' as string
 
     def validate(self, data):
+        if self.partial: # skip validations when partial serializer (proposal acceptance only)
+            return data
+        
         trait = self.trait
         value = self.loaded_value
 
@@ -197,21 +206,25 @@ class TraitValueSerializer(ContentSerializer):
             return trait_value
         
     def update(self, trait_value, data):
+        accepted_trait_value = None
         try:
-            accepted_trait_value = TraitValue.objects.get(trait_id=trait_value.trait_id, plant_id=trait_value.plant_id)
+            accepted_trait_value = TraitValue.objects.get(
+                trait_id=trait_value.trait_id,
+                plant_id=trait_value.plant_id,
+                content__status="accepted",
+            )
         except TraitValue.DoesNotExist:
             pass
 
         with transaction.atomic():
             if accepted_trait_value:
                 current_accepted_content = accepted_trait_value.content
-                current_accepted_content['status'] = "rejected"
-                current_accepted_content['rejector_id'] = data['content_acceptor_id']
+                current_accepted_content.status = "rejected"
+                current_accepted_content.rejector_id = data['content_acceptor_id']
+                current_accepted_content.rejected_at = Now()
                 current_accepted_content.save()
 
-            super().update(trait_value.content, data)
-
-        return trait_value
+            return super().update(trait_value, data)
 
     class Meta(ContentSerializer.Meta):
         model = TraitValue
@@ -267,6 +280,8 @@ class TaxonSerializer(ContentSerializer):
     
     def to_internal_value(self, data):
         data = super().to_internal_value(data)
+        if self.partial: # skip fields parsing when partial serializer (proposal acceptance only)
+            return data
 
         species_match = re.match(self.patterns['species'], data.get('species', ""))
 
@@ -280,6 +295,9 @@ class TaxonSerializer(ContentSerializer):
         return data
 
     def validate(self, data):
+        if self.partial: # skip validations when partial serializer (proposal acceptance only)
+            return data
+        
         try:
             Plant.objects.get(id=data['plant_id'])
         except Plant.DoesNotExist:
@@ -292,30 +310,29 @@ class TaxonSerializer(ContentSerializer):
             if data[key] and not re.match(patt, data[key]):
                 raise ValidationError({f'{key}': f"Valor '{data[key]} inválido. Deve ser compatível com a expressão regular '{patt}.'"})
         
-        matching_accepted = Taxon.objects.select_related('content').filter(
-            family=data['family'],
+        matches_other_plant_name = Taxon.objects.select_related('content').filter(
+            ~Q(plant_id=data['plant_id']),
             genus=data['genus'],
             species=data['species'],
             subspecies=data['subspecies'],
             variety=data['variety'],
-            taxonomic_status=data['taxonomic_status'],
-            content__status__in=["accepted"],
+            content__status="accepted",
         )
-        if matching_accepted:
-            raise ValidationError({'non_field_errors': "Taxonomia idêntica ao nome aceito ou sinônimo de uma planta já cadastrada."})
+        if matches_other_plant_name:
+            raise ValidationError({'non_field_errors': "Nome idêntico ao nome aceito ou sinônimo de outra planta já cadastrada."})
         
-        matching_proposals = Taxon.objects.select_related('content').filter(
+        matches_same_plant_taxonomy = Taxon.objects.select_related('content').filter(
+            plant_id=data['plant_id'],
             family=data['family'],
             genus=data['genus'],
             species=data['species'],
             subspecies=data['subspecies'],
             variety=data['variety'],
             taxonomic_status=data['taxonomic_status'],
-            plant_id=data['plant_id'],
-            content__status__in=["proposed"],
+            content__status__in=["accepted", "proposed"],
         )
-        if matching_proposals:
-            raise ValidationError({'non_field_errors': "Taxonomia idêntica a uma das propostas para a mesma planta."})
+        if matches_same_plant_taxonomy:
+            raise ValidationError({'non_field_errors': "Taxonomia idêntica a outra aceita ou proposta para a mesma planta."})
         
         return super().validate(data)
 
@@ -335,9 +352,15 @@ class TaxonSerializer(ContentSerializer):
             )
         
     def update(self, taxon, data):
+        # TODO: tratar casos em que é necessário aceitar, como nome aceito, um nome já aceito como sinônimo da mesma planta ou vice-e-versa
+        accepted_taxon = None
         if taxon.taxonomic_status == "accepted":
             try:
-                accepted_taxon = Taxon.objects.get(plant_id=taxon.plant_id, taxonomic_status="accepted")
+                accepted_taxon = Taxon.objects.get(
+                    plant_id=taxon.plant_id,
+                    taxonomic_status="accepted",
+                    content__status="accepted",
+                )
             except Taxon.DoesNotExist:
                 pass
 
@@ -347,26 +370,37 @@ class TaxonSerializer(ContentSerializer):
                 current_accepted_content = accepted_taxon.content
                 current_accepted_content.status = "rejected"
                 current_accepted_content.rejector_id = data['content_acceptor_id']
+                current_accepted_content.rejected_at = Now()
                 current_accepted_content.save()
+            
+            # update name on plant
+            taxon.plant.accepted_taxon_name = PlantSerializer.build_accepted_taxon_name(taxon)
+            taxon.plant.accepted_family_name = taxon.family
+            taxon.plant.save()
 
             # effectively accept proposed content
-            super().update(taxon.content, data)
+            return super().update(taxon, data)
 
-        if accepted_taxon:
-            # recreate previous accepted taxon as synonym
-            # separate transaction has to be opened to avoid eternal loop
-            with transaction.atomic():
-                previous_accepted_values = accepted_taxon.values()
-                previous_accepted_values.update({
-                    'taxonomic_status': 'synonym',
-                    'source_id': taxon.content.source_id,
-                    'content_proposer_id': taxon.content.proposer_id,
-                    'content_proposer_comment': taxon.content.proposer_comment,
-                })
-                new_synonym_taxon = self.create(previous_accepted_values)
+        # FUNCIONALIDADE SUSPENSA PARA EVITAR DEAD-END NO QUAL PROPOSTA DE NOME ACEITO NÃO PODE SUBSTITUIR SINÔNIMO
+        # if accepted_taxon:
+        #     # recreate previous accepted taxon as synonym
+        #     # separate transaction has to be opened to avoid eternal loop
+        #     with transaction.atomic():
+        #         new_synonym_taxon = self.create({
+        #             'plant_id': accepted_taxon.plant_id,
+        #             'family': accepted_taxon.family,
+        #             'genus': accepted_taxon.genus,
+        #             'species': accepted_taxon.species,
+        #             'subspecies': accepted_taxon.subspecies,
+        #             'variety': accepted_taxon.variety,
+        #             'taxonomic_status': 'synonym',
+        #             'source_id': taxon.content.source_id,
+        #             'content_proposer_id': taxon.content.proposer_id,
+        #             'content_proposer_comment': taxon.content.proposer_comment,
+        #         })
 
-                # automatically accept the proposal, efectivelly reincluding the previous taxon as synonym
-                self.update(new_synonym_taxon, data)
+        #         # automatically accept the proposal, efectivelly reincluding the previous taxon as synonym
+        #         self.update(new_synonym_taxon, data)
 
         return taxon
 
@@ -414,18 +448,25 @@ class PopularNameSerializer(ContentSerializer):
         super().__init__(*args, **kwargs)
 
     def to_internal_value(self, data):
-        data['name'] = none_if_empty(data.get('name',"").lower())
+        data = super().to_internal_value(data)
+        if self.partial: # skip fields parsing when partial serializer (proposal acceptance only)
+            return data
+
+        data['name'] = none_if_empty(data.get('name').lower())
         
-        return super().to_internal_value(data)
+        return data
 
     def validate(self, data):
+        if self.partial: # skip validations when partial serializer (proposal acceptance only)
+            return data
+
         try:
             Plant.objects.get(id=data['plant_id'])
         except Plant.DoesNotExist:
             raise ValidationError({'plant_id': "Não há planta cadastrada com esse id."})
         
         for key, patt in self.patterns.items():
-            if data[key] and not re.match(patt, unidecode(data[key])):
+            if  data[key] and not re.match(patt, unidecode(data[key])):
                 raise ValidationError({f'{key}': f"Valor '{data[key]}' incompatível com a expressão regular '{patt}.'"})
         
         matching_names = PopularName.objects.filter(
@@ -487,6 +528,9 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
         super().__init__(*args, **kwargs)
 
     def validate(self, data):
+        if self.partial: # skip validations when partial serializer (proposal acceptance only)
+            return data
+        
         # check conditionally required fields
         brazil = Country.objects.defer('area').get(name_text__pt_br='Brasil')
         if data.get('country_id') == brazil.id:
@@ -616,11 +660,7 @@ class PlantCreationSerializer(ContentSerializer):
                 popular_name = popular_name_serializer.save()
 
             # update plant with taxonomic data
-            accepted_taxon_name = (
-                f"{taxon.species}" +
-                (f" subsp. {taxon.subspecies}" if taxon.subspecies else "") +
-                (f" var. {taxon.variety}" if taxon.variety else "")
-            )
+            accepted_taxon_name = PlantSerializer.build_accepted_taxon_name(taxon)
 
             plant.accepted_taxon_name = accepted_taxon_name
             plant.accepted_family_name = taxon.family
@@ -644,6 +684,14 @@ class PlantSerializer(ContentSerializer):
     accepted_taxon_name = CharField(required=False)
     accepted_family_name = CharField(required=False)
     color_hex = CharField(required=False)
+
+    @staticmethod
+    def build_accepted_taxon_name(taxon: Taxon):
+        return (
+            f"{taxon.species}" +
+            (f" subsp. {taxon.subspecies}" if taxon.subspecies else "") +
+            (f" var. {taxon.variety}" if taxon.variety else "")
+        )
 
     def __init__(self,  *args, **kwargs):
         kwargs['content_type'] = "plant"

@@ -11,6 +11,7 @@ from catalog.serializers.models import *
 from catalog.serializers.parameters import *
 
 class PlantView(ContentView):
+    model_class = Plant
     serializer_class = PlantSerializer
     
     def get_permissions(self):
@@ -125,6 +126,7 @@ class TraitListView(TraitView):
 
 class TraitValueView(ContentView):
     permission_classes = [IsAuthenticated]
+    model_class = TraitValue
     serializer_class = TraitValueSerializer
 
 
@@ -150,6 +152,7 @@ class PlantTraitValueListView(ContentListView):
 
 class PopularNameView(ContentView):
     permission_classes = [IsAuthenticated]
+    model_class = PopularName
     serializer_class = PopularNameSerializer
 
 
@@ -184,6 +187,7 @@ class PlantPopularNameListView(PopularNameListView):
 
 class TaxonView(ContentView):
     permission_classes = [IsAuthenticated]
+    model_class = Taxon
     serializer_class = TaxonSerializer
 
 
@@ -218,6 +222,7 @@ class PlantTaxonListView(TaxonListView):
 
 class NaturalOccurrenceRegionView(ContentView):
     permission_classes = [IsAuthenticated]
+    model_class = NaturalOccurrenceRegion
     serializer_class = NaturalOccurrenceRegionSerializer
 
 

@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.db.models import Prefetch, Q
+from django.db.models.functions import Now
 from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, IntegerField, JSONField, ModelSerializer, Serializer, ValidationError
 from core.models import Content, ContentEndorsement, Source, SourceField, SourceFieldValue, SourceType, User
 from jsonschema import validate, FormatChecker
@@ -254,10 +255,13 @@ class ContentSerializer(ModelSerializer):
     source_id = IntegerField(required=False, source='content.source_id')
     # write
     content_proposer_id = IntegerField(write_only=True)
+    content_acceptor_id = IntegerField(write_only=True, required=False)
+    content_rejector_id = IntegerField(write_only=True, required=False)
     content_proposer_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     # read
     content_status = CharField(read_only=True, source='content.status')
     content_proposer = UserPreviewSerializer(read_only=True, source='content.proposer')
+    # content_acceptor = UserPreviewSerializer(read_only=True, source='content.acceptor')
     endorsements_count = IntegerField(read_only=True, source='content.endorsements_count')
     proposed_at = DateTimeField(read_only=True, source='content.proposed_at')
     accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
@@ -284,7 +288,7 @@ class ContentSerializer(ModelSerializer):
     
     def to_internal_value(self, data):
         data = super().to_internal_value(data)
-        content_data = data.pop('content')
+        content_data = data.pop('content', {})
 
         return dict(**data, **content_data) # revert content fields nesting by default method
     
@@ -303,12 +307,13 @@ class ContentSerializer(ModelSerializer):
             proposer_comment = validated_data.get('content_proposer_comment'),
         )
     
-    def update(self, content, data):
-        content.status = 'accepted'
-        content.acceptor_id = data['content_acceptor_id']
-        content.save()
+    def update(self, instance, data):
+        instance.content.status = 'accepted'
+        instance.content.acceptor_id = data['content_acceptor_id']
+        instance.content.accepted_at = Now()
+        instance.content.save()
 
-        return content
+        return instance
 
     class Meta:
         model = Content
@@ -316,8 +321,11 @@ class ContentSerializer(ModelSerializer):
             'source_id',
             'content_status',
             'content_proposer',
+            # 'content_acceptor',
             'content_proposer_id',
             'content_proposer_comment',
+            'content_acceptor_id',
+            'content_rejector_id',
             'endorsements_count',
             'proposed_at',
             'accepted_at',
