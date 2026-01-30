@@ -20,6 +20,7 @@ class TraitParamsSerializer(Serializer):
     section__in = StringListField(required=False, allow_null=False, source='section_slugs')
 
 class TraitValueParamsSerializer(Serializer):
+    content_id = IntegerField(required=False, allow_null=False)
     content__status__in = StringListField(required=False, allow_null=False, source='status')
     trait__name__in = StringListField(required=False, allow_null=False, source='trait_slugs')
     trait__section__in = StringListField(required=False, allow_null=False, source='section_slugs')

@@ -274,6 +274,7 @@ class ContentPreviewSerializer(ModelSerializer):
             'id',
             'type',
             'status',
+            'endorsements_count',
             'proposer',
             'proposer_comment',
             'acceptor',

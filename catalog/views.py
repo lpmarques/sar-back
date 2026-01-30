@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from catalog.services import get_plant
-from core.views import ContentListView, ContentView
+from core.views import ContentListView, ContentView, ContentView
 from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, TraitValue
 from catalog.serializers.models import *
 from catalog.serializers.parameters import *
@@ -95,6 +95,18 @@ class PlantListView(PlantView):
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 
+class PlantContentListView(ContentListView):
+    def get(self, request, plant_id):
+        filters = self.params_serializer_class(request.query_params).data
+        filters.update({'plant_id': plant_id})
+
+        objs = self.get_queryset().denormalized().filter(**filters)
+
+        serializer = self.serializer_class(objs, many=True, content_params=self.get_content_params())
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 class TraitView(APIView):
     permission_classes = [AllowAny]
 
@@ -111,7 +123,6 @@ class TraitView(APIView):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
 class TraitListView(TraitView):
     def get(self, request):
         filters = {'is_site_specific': False}
@@ -125,135 +136,57 @@ class TraitListView(TraitView):
 
 
 class TraitValueView(ContentView):
-    permission_classes = [IsAuthenticated]
     model_class = TraitValue
     serializer_class = TraitValueSerializer
 
+class TraitValueListView(ContentListView):
+    model_class = TraitValue
+    serializer_class = TraitValueSerializer
+    params_serializer_class = TraitValueParamsSerializer
 
-class PlantTraitValueListView(ContentListView):
-    permission_classes = [AllowAny]
-
-    def get(self, request, plant_id):
-        filters = TraitValueParamsSerializer(request.query_params).data
-        filters.update({'plant_id': plant_id})
-
-        try:
-            Plant.objects.get(id=plant_id)
-        except Plant.DoesNotExist:
-            content = {'msg': 'Planta não cadastrada'}
-            return Response(content, status=status.HTTP_400_BAD_REQUEST)
-
-        trait_values = super().get_queryset(TraitValue).denormalized().filter(**filters)
-
-        serializer = TraitValueSerializer(trait_values, many=True, content_params=super().get_content_params())
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
+class PlantTraitValueListView(PlantContentListView, TraitValueListView):
+    pass
 
 
 class PopularNameView(ContentView):
-    permission_classes = [IsAuthenticated]
     model_class = PopularName
     serializer_class = PopularNameSerializer
 
-
 class PopularNameListView(ContentListView):
-    permission_classes = [AllowAny]
-    
-    def get_queryset(self):
-        filters = PopularNameParamsSerializer(self.request.query_params).data
+    model_class = PopularName
+    serializer_class = PopularNameSerializer
+    params_serializer_class = PopularNameParamsSerializer    
 
-        return super().get_queryset(PopularName).filter(**filters)
-
-    def get(self, request):
-        popular_names = self.get_queryset().denormalized()
-        serializer = PopularNameSerializer(popular_names, many=True, content_params=super().get_content_params())
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    
-
-class PlantPopularNameListView(PopularNameListView):
-    def get(self, request, plant_id):
-        try:
-            plant = Plant.objects.get(id=plant_id)
-            popular_names = self.get_queryset().denormalized().filter(plant_id=plant.id)
-        except Plant.DoesNotExist:
-            content = {'msg': 'Planta não cadastrada'}
-            return Response(content, status=status.HTTP_400_BAD_REQUEST)
-
-        serializer = PopularNameSerializer(popular_names, many=True, content_params=super().get_content_params())
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
+class PlantPopularNameListView(PlantContentListView, PopularNameListView):
+    pass
 
 
 class TaxonView(ContentView):
-    permission_classes = [IsAuthenticated]
     model_class = Taxon
     serializer_class = TaxonSerializer
 
 
 class TaxonListView(ContentListView):
-    permission_classes = [AllowAny]
-
-    def get_queryset(self):
-        filters = TaxonParamsSerializer(self.request.query_params).data
-
-        return super().get_queryset(Taxon).filter(**filters)
-
-    def get(self, request):
-        taxa = self.get_queryset().denormalized()
-        serializer = TaxonSerializer(taxa, many=True, content_params=super().get_content_params())
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    model_class = Taxon
+    serializer_class = TaxonSerializer
+    params_serializer_class = TaxonParamsSerializer
 
 
-class PlantTaxonListView(TaxonListView):
-    def get(self, request, plant_id):
-        try:
-            plant = Plant.objects.get(id=plant_id)
-            taxa = self.get_queryset().denormalized().filter(plant_id=plant_id)
-        except Plant.DoesNotExist:
-            content = {'msg': 'Planta não cadastrada'}
-            return Response(content, status=status.HTTP_400_BAD_REQUEST)
-        
-        serializer = TaxonSerializer(taxa, many=True, content_params=super().get_content_params())
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
+class PlantTaxonListView(PlantContentListView, TaxonListView):
+    pass
 
 
 class NaturalOccurrenceRegionView(ContentView):
-    permission_classes = [IsAuthenticated]
     model_class = NaturalOccurrenceRegion
     serializer_class = NaturalOccurrenceRegionSerializer
 
-
 class NaturalOccurrenceRegionListView(ContentListView):
-    permission_classes = [AllowAny]
+    model_class = NaturalOccurrenceRegion
+    serializer_class = NaturalOccurrenceRegionSerializer
+    params_serializer_class = NaturalOccurrenceRegionParamsSerializer
 
     def get_queryset(self):
-        filters = NaturalOccurrenceRegionParamsSerializer(self.request.query_params).data
-        return super().get_queryset(NaturalOccurrenceRegion).denormalized().only_important_fields().filter(**filters)
-        
-    def get(self, request):
-        natural_occurrence_regions = self.get_queryset().values(
-            'country__name_text__pt_br',
-            'state__code',
-            'biome__name',
-            'vegetation_type__name'
-        ).annotate(plant_ids=ArrayAgg("plant_id"))
-        serializer = NaturalOccurrenceRegionSerializer(natural_occurrence_regions, many=True, content_params=super().get_content_params())
+        return super().get_queryset().only_important_fields()
 
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-class PlantNaturalOccurrenceRegionListView(NaturalOccurrenceRegionListView):
-    def get(self, request, plant_id):
-        try:
-            plant = Plant.objects.get(id=plant_id)
-            natural_occurrence_regions = self.get_queryset().filter(plant_id=plant_id)
-        except Plant.DoesNotExist:
-            content = {'msg': 'Planta não cadastrada'}
-            return Response(content, status=status.HTTP_400_BAD_REQUEST)
-
-        serializer = NaturalOccurrenceRegionSerializer(natural_occurrence_regions, many=True, content_params=super().get_content_params())
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
+class PlantNaturalOccurrenceRegionListView(PlantContentListView, NaturalOccurrenceRegionListView):
+    pass

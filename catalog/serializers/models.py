@@ -67,6 +67,7 @@ class TraitSerializer(ModelSerializer):
 
 class TraitValueSerializer(ContentSerializer):
     # read
+    id = IntegerField(read_only=True)
     content_id = IntegerField(read_only=True)
     trait_slug = SlugRelatedField(read_only=True, source='trait', slug_field='name')
     trait_name = SlugRelatedField(read_only=True, source='trait', slug_field='name_text.pt_br')
@@ -229,6 +230,7 @@ class TraitValueSerializer(ContentSerializer):
     class Meta(ContentSerializer.Meta):
         model = TraitValue
         fields = [
+            'id',
             'content_id',
             'plant_id',
             'trait_id',
@@ -245,6 +247,7 @@ class TraitValuePreviewSerializer(TraitValueSerializer):
     class Meta:
         model = TraitValue
         fields = [
+            'id',
             'content_id',
             'content_status',
             'trait_slug',
@@ -255,6 +258,7 @@ class TraitValuePreviewSerializer(TraitValueSerializer):
 
 class TaxonSerializer(ContentSerializer):
     # read
+    id = IntegerField(read_only=True)
     content_id = IntegerField(read_only=True)
     genus = CharField(read_only=True)
     # both
@@ -407,6 +411,7 @@ class TaxonSerializer(ContentSerializer):
     class Meta:
         model = Taxon
         fields = [
+            'id',
             'content_id',
             'plant_id',
             'family',
@@ -421,6 +426,7 @@ class TaxonPreviewSerializer(TaxonSerializer):
     class Meta:
         model = Taxon
         fields = [
+            'id',
             'content_id',
             'content_status',
             'family',
@@ -433,6 +439,7 @@ class TaxonPreviewSerializer(TaxonSerializer):
 
 class PopularNameSerializer(ContentSerializer):
     # read
+    id = IntegerField(read_only=True)
     content_id = IntegerField(read_only=True)
     # both
     name = CharField()
@@ -492,6 +499,7 @@ class PopularNameSerializer(ContentSerializer):
     class Meta(ContentSerializer.Meta):
         model = PopularName
         fields = [
+            'id',
             'content_id',
             'content_status',
             'plant_id',
@@ -502,6 +510,7 @@ class PopularNamePreviewSerializer(PopularNameSerializer):
     class Meta:
         model = PopularName
         fields = [
+            'id',
             'content_id',
             'content_status',
             'name',
@@ -509,6 +518,7 @@ class PopularNamePreviewSerializer(PopularNameSerializer):
 
 class NaturalOccurrenceRegionSerializer(ContentSerializer):
     # read
+    id = IntegerField(read_only=True)
     content_id = IntegerField(read_only=True)
     country = CountrySerializer(read_only=True)
     state = StateSerializer(read_only=True)
@@ -583,6 +593,7 @@ class NaturalOccurrenceRegionSerializer(ContentSerializer):
     class Meta(ContentSerializer.Meta):
         model = NaturalOccurrenceRegion
         fields = [
+            'id',
             'content_id',
             'plant_id',
             'country',
@@ -599,6 +610,7 @@ class NaturalOccurrenceRegionPreviewSerializer(NaturalOccurrenceRegionSerializer
     class Meta:
         model = NaturalOccurrenceRegion
         fields = [
+            'id',
             'content_id',
             'content_status',
             'country',
