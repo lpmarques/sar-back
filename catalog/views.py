@@ -1,3 +1,4 @@
+from abc import ABC
 from django.contrib.postgres.aggregates import ArrayAgg
 from rest_framework import status
 from rest_framework.exceptions import APIException
@@ -13,12 +14,6 @@ from catalog.serializers.parameters import *
 class PlantView(ContentView):
     model_class = Plant
     serializer_class = PlantSerializer
-    
-    def get_permissions(self):
-        if self.request.method == 'GET':
-            return [AllowAny()]
-
-        return [IsAuthenticated()]
 
     def fetch_filter_params(self, params_data: dict, related_name: str):
         return { key.replace(f'{related_name}_', ''): value for key, value in params_data.items() if f'{related_name}_' in key }
@@ -35,11 +30,11 @@ class PlantView(ContentView):
 
         return query
 
-    def get(self, request, plant_id):
+    def get(self, request, id):
         params = PlantParamsSerializer(request.query_params).data
 
         try:
-            plant = self.get_queryset().get(id=plant_id)
+            plant = self.get_queryset().get(id=id)
         except Plant.DoesNotExist:
             content = {'msg': 'Planta não encontrada.'}
             return Response(content, status=status.HTTP_404_NOT_FOUND)
@@ -66,22 +61,6 @@ class PlantView(ContentView):
     
         return Response(content, status=status.HTTP_201_CREATED)
 
-    def patch(self, request, plant_id):
-        try:
-            plant = get_plant(plant_id=plant_id)
-        except APIException as err:
-            return Response({'msg': err.detail}, status=err.status_code)
-        
-        return super().patch(request, plant.content_id)
-
-    def delete(self, request, plant_id):
-        try:
-            plant = get_plant(plant_id=plant_id)
-        except APIException as err:
-            return Response({'msg': err.detail}, status=err.status_code)
-        
-        return super().delete(request, plant.content_id)
-
 class PlantListView(PlantView):
     def get(self, request):
         plants = self.get_queryset()
@@ -95,10 +74,10 @@ class PlantListView(PlantView):
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 
-class PlantContentListView(ContentListView):
-    def get(self, request, plant_id):
+class PlantContentListView(ContentListView, ABC):
+    def get(self, request, id):
         filters = self.params_serializer_class(request.query_params).data
-        filters.update({'plant_id': plant_id})
+        filters.update({'plant_id': id})
 
         objs = self.get_queryset().denormalized().filter(**filters)
 

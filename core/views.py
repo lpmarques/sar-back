@@ -210,9 +210,9 @@ class ContentView(APIView, ABC):
 
         return serializer.save()
 
-    def get(self, request, model_id):
+    def get(self, request, id):
         try:
-            obj = self.get_queryset().denormalized().get(id=model_id)
+            obj = self.get_queryset().denormalized().get(id=id)
         except self.model_class.DoesNotExist:
             return Response({'msg': 'Objeto não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
         
@@ -226,20 +226,21 @@ class ContentView(APIView, ABC):
         serializer = self.serializer_class(data=data)
 
         try:
-            object = self.validate_and_save_serializer(serializer)
+            obj = self.validate_and_save_serializer(serializer)
         except APIException as err:
             return Response({'msg': err.detail}, status=err.status_code)
 
         content = {
-            'content_id': object.content_id,
+            'id': obj.id,
+            'content_id': obj.content_id,
             'msg': 'Proposta cadastrada com sucesso.'
         }
 
         return Response(content, status=status.HTTP_201_CREATED)
 
-    def patch(self, request, model_id):
+    def patch(self, request, id):
         try:
-            obj = self.get_queryset().get(id=model_id)
+            obj = self.get_queryset().get(id=id)
         except self.model_class.DoesNotExist:
             return Response({'msg': 'Proposta não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
         
@@ -267,9 +268,9 @@ class ContentView(APIView, ABC):
 
         return Response(content, status=status.HTTP_201_CREATED)
     
-    def delete(self, request, model_id):
+    def delete(self, request, id):
         try:
-            obj = self.get_queryset().get(id=model_id)
+            obj = self.get_queryset().get(id=id)
         except self.model_class.DoesNotExist:
             return Response({'msg': 'Proposta não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
         
@@ -293,7 +294,7 @@ class ContentView(APIView, ABC):
 class ContentListView(ContentView, ABC):
     @property
     @abstractmethod
-    def params_serializer_class(self):
+    def params_serializer_class(self): # sets params_serializer_class as abstract attribute that needs to be declared in child
         pass
 
     def get_filter_params(self):
