@@ -5,16 +5,15 @@ from django.db.models import Q
 from django.db.models.functions import Now
 from py_mini_racer import MiniRacer
 from jsonschema import FormatChecker, validate
-from rest_framework.exceptions import NotFound
-from rest_framework.serializers import BooleanField, CharField, ChoiceField, DateTimeField, IntegerField, JSONField, ListSerializer, ModelSerializer, Serializer, SerializerMethodField, ValidationError
+from rest_framework.serializers import BooleanField, CharField, ChoiceField, DateTimeField, IntegerField, JSONField, ModelSerializer, Serializer, SerializerMethodField, ValidationError
 from rest_framework_gis.fields import GeometryField
-from catalog.models import InvasionRiskRegion, Plant
-from catalog.serializers.models import PlantSerializer, TraitValuePreviewSerializer as PlantTraitValuePreviewSerializer
+from catalog.models import InvasionRiskRegion
+from catalog.serializers.models import PlantSerializer
 from core.serializers import UserPreviewSerializer
 from core.models import Text
 from geography.models import Biome, Country, Municipality, State, VegetationArea
 from geography.serializers import BiomeSerializer, CountrySerializer, MunicipalitySerializer, StateSerializer, VegetationTypeSerializer
-from agroforestry.models import Farm, Field, Function, PlantSiteFitting, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
+from agroforestry.models import Farm, Field, Function, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
 from agroforestry.utils import none_if_empty, none_if_nan
 from typing import List, Union
 import json

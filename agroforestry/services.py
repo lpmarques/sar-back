@@ -74,14 +74,6 @@ def get_trait_value(site_trait_value_id, user_id):
     
     return trait_value
 
-def get_value_texts(trait: SiteTrait, value) -> List[Text]:
-    if trait.schema['type'] == "array" and trait.schema['items']['type'] == "string":
-        return Text.objects.filter(**{'pt_br__in': value})
-    elif trait.schema['type'] == "string":
-        return Text.objects.filter(**{'pt_br': value})
-
-    return []
-
 def get_site_plants_fitness_data(site_id: int, plant_id: int=None):
     query = PlantsFitnessQuery(site_id, plant_id)
     
