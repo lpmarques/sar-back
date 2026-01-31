@@ -3,9 +3,6 @@ from django.db.models import QuerySet, Prefetch
 from core.querysets import ContentQuerySet
 
 class PlantQuerySet(ContentQuerySet):
-    def denormalized(self):
-        return super().denormalized()
-
     def with_popular_names(self, custom_filters: dict):
         filters = {'content__status__in': ['accepted']}
         filters.update(custom_filters)

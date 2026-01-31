@@ -1,7 +1,11 @@
+from abc import ABC, abstractmethod
 from django.contrib.auth import authenticate
+from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Q
 from django.db.models.functions import Now
 from rest_framework import status
 from rest_framework.authtoken.models import Token
+from rest_framework.exceptions import APIException
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -152,7 +156,8 @@ class UserTokenView(APIView):
                 'id': user.id,
                 'email': user.email,
                 'first_name': user.first_name,
-                'last_name': user.last_name 
+                'last_name': user.last_name,
+                'is_staff': user.is_staff,
             },
             'msg': ('Login realizado com sucesso.')
         }
@@ -169,61 +174,22 @@ class UserTokenView(APIView):
         return Response(content, status=status.HTTP_200_OK)
 
 
-class ContentView(APIView):
-    permission_classes = [IsAuthenticated]
+class ContentView(APIView, ABC):
+    @property
+    @abstractmethod
+    def model_class(self): # sets model_class as abstract attribute that needs to be declared in child
+        pass
 
-    def validate_and_save_serializer(self, serializer: ModelSerializer):
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    @property
+    @abstractmethod
+    def serializer_class(self):
+        pass
 
-        try:
-            object = serializer.save()
-        except Exception as err:
-            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        return object
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [AllowAny()]
 
-    def post(self, request):
-        data = request.data
-        data.update({'content_proposer_id': request.user.id})
-        serializer = self.serializer_class(data=data)
-
-        object_res = self.validate_and_save_serializer(serializer)
-        if isinstance(object_res, Response):
-            return object_res
-
-        content = {
-            'content_id': object_res.content_id,
-            'msg': 'Proposta cadastrada com sucesso.'
-        }
-
-        return Response(content, status=status.HTTP_200_OK)
-    
-    def delete(self, request, content_id):
-        try:
-            content = Content.objects.get(id=content_id, status="proposed")
-        except Content.DoesNotExist:
-            return Response({'msg': 'Não há proposta cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if content.proposer_id != request.user.id:
-            return Response({'msg': 'Você não tem autorização para rejeitar essa proposta.'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        if content.rejected_at:
-            return Response({'msg': 'Proposta já rejeitada.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        content.status = "rejected"
-        content.rejected_at = Now()
-        content.save()
-
-        content = {
-            'msg': 'Proposta rejeitada com sucesso.'
-        }
-    
-        return Response(content, status=status.HTTP_200_OK)
-
-
-class ContentListView(APIView):
-    permission_classes = [AllowAny]
+        return [IsAuthenticated()]
 
     def get_content_params(self):
         params = ContentParamsSerializer(self.request.query_params).data if self.request.query_params else {}
@@ -232,12 +198,113 @@ class ContentListView(APIView):
 
         return params
 
-    def get_queryset(self, model):
-        query = model.objects
+    def get_queryset(self):
+        query = self.model_class.objects
         if self.get_content_params().get('with_user_endorsement_info'):
             query = query.with_user_endorsement_info(self.request.user)
 
         return query
+
+    def validate_and_save_serializer(self, serializer: ModelSerializer):
+        serializer.is_valid(raise_exception=True)
+
+        return serializer.save()
+
+    def get(self, request, model_id):
+        try:
+            obj = self.get_queryset().denormalized().get(id=model_id)
+        except self.model_class.DoesNotExist:
+            return Response({'msg': 'Objeto não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = self.serializer_class(obj, self.get_content_params())
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        
+    def post(self, request):
+        data = request.data
+        data.update({'content_proposer_id': request.user.id})
+        serializer = self.serializer_class(data=data)
+
+        try:
+            object = self.validate_and_save_serializer(serializer)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
+
+        content = {
+            'content_id': object.content_id,
+            'msg': 'Proposta cadastrada com sucesso.'
+        }
+
+        return Response(content, status=status.HTTP_201_CREATED)
+
+    def patch(self, request, model_id):
+        try:
+            obj = self.get_queryset().get(id=model_id)
+        except self.model_class.DoesNotExist:
+            return Response({'msg': 'Proposta não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        if obj.content.status != "proposed":
+            return Response({'msg': 'Essa proposta já foi aceita ou rejeitada.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not request.user.is_staff:
+            return Response({'msg': 'Você não tem permissão para aceitar essa proposta.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # partial update in object serializer accepts the proposal
+        serializer = self.serializer_class(
+            obj,
+            data={'content_acceptor_id': request.user.id},
+            partial=True
+        )
+
+        try:
+            accepted_obj = self.validate_and_save_serializer(serializer)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
+
+        content = {
+            'msg': 'Proposta aprovada com sucesso.'
+        }
+
+        return Response(content, status=status.HTTP_201_CREATED)
+    
+    def delete(self, request, model_id):
+        try:
+            obj = self.get_queryset().get(id=model_id)
+        except self.model_class.DoesNotExist:
+            return Response({'msg': 'Proposta não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        if obj.content.status != "proposed":
+            return Response({'msg': 'Essa proposta já foi aceita ou rejeitada.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if obj.content.proposer_id != request.user.id and not request.user.is_staff:
+            return Response({'msg': 'Você não tem permissão para rejeitar essa proposta.'}, status=status.HTTP_403_FORBIDDEN)
+
+        obj.content.status = "rejected"
+        obj.content.rejected_at = Now()
+        obj.content.rejector_id = request.user.id
+        obj.content.save()
+
+        content = {
+            'msg': 'Proposta rejeitada com sucesso.'
+        }
+    
+        return Response(content, status=status.HTTP_200_OK)
+
+class ContentListView(ContentView, ABC):
+    @property
+    @abstractmethod
+    def params_serializer_class(self):
+        pass
+
+    def get_filter_params(self):
+        return self.params_serializer_class(self.request.query_params).data
+        
+    def get(self, request):
+        objs = self.get_queryset().denormalized().filter(**self.get_filter_params())
+
+        serializer = self.serializer_class(objs, many=True, content_params=self.get_content_params())
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class ContentEndorsementView(APIView):
@@ -267,10 +334,10 @@ class ContentEndorsementView(APIView):
         try:
             endorsement = ContentEndorsement.objects.denormalized().get(id=endorsement_id)
         except ContentEndorsement.DoesNotExist:
-            return Response({'msg': 'Não há apoio cadastrada com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'msg': 'Não há apoio cadastrado com esse id.'}, status=status.HTTP_400_BAD_REQUEST)
         
         if endorsement.endorser.id != request.user.id:
-            return Response({'msg': 'Você não tem autorização para remover esse apoio.'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'msg': 'Você não tem permissão para remover esse apoio.'}, status=status.HTTP_403_FORBIDDEN)
 
         if endorsement.deleted_at:
             return Response({'msg': 'Apoio já removido.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -375,4 +442,32 @@ class SourceTypeListView(APIView):
         serializer = SourceTypeSerializer(source_types, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
+class ContentPreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Content.objects.select_related(
+            'proposer'
+        ).filter(
+            ~Q(proposer__email='perma.lucas@gmail.com') # TODO: think less ugly solution to this
+        )
+
+    def get(self, request, content_id):
+        try:
+            content = self.get_queryset().get(id=content_id)
+        except Content.DoesNotExist:
+            return Response({'msg': 'Conteúdo não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = ContentPreviewSerializer(content)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class ContentPreviewListView(ContentPreviewView):
+    def get(self, request):
+        filters = ContentPreviewParamsSerializer(self.request.query_params).data
+        
+        contents = self.get_queryset().filter(**filters)
+        serializer = ContentPreviewSerializer(contents, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)

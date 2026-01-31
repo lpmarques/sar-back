@@ -1,9 +1,21 @@
 from django.db import transaction
 from django.db.models import Prefetch, Q
-from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, IntegerField, JSONField, ModelSerializer, Serializer, ValidationError
+from django.db.models.functions import Now
+from rest_framework.serializers import BooleanField, CharField, DateTimeField, EmailField, Field, IntegerField, JSONField, ModelSerializer, Serializer, ValidationError
 from core.models import Content, ContentEndorsement, Source, SourceField, SourceFieldValue, SourceType, User
 from jsonschema import validate, FormatChecker
 import json
+
+class StringListField(Field):
+    def __init__(self, separator=",", *args, **kwargs):
+        self.separator = separator
+        super().__init__(*args, **kwargs)
+
+    def to_internal_value(self, value: list) -> str:
+        return self.separator.join(value) if value else None
+    
+    def to_representation(self, value: str) -> list:
+        return value.split(self.separator) if value else None
 
 class SourceFieldSerializer(ModelSerializer):
     name = CharField(read_only=True, source='name_text.pt_br')
@@ -47,15 +59,24 @@ class SourceFieldValueSerializer(ModelSerializer):
         except SourceField.DoesNotExist:
             raise ValidationError({'field_id': f"Não há campo cadastrado com o id {field_id}."})
 
-        try:
-            validate(value, field.schema, format_checker=FormatChecker())
-        except Exception as e:
-            raise ValidationError({'value': f"Valor inválido para o campo '{field.name_text.pt_br}' (field_id: {field_id})': {e}"})
-
         if field.schema['type'] != "string":
             data['value'] = json.dumps(value)
 
+        self.field = field
+        self.loaded_value = value
+
         return super().to_internal_value(data) # default method must run after custom so that it validates 'value' as string
+
+    def validate(self, data):
+        field = self.field
+        value = self.loaded_value
+
+        try:
+            validate(value, field.schema, format_checker=FormatChecker())
+        except Exception as e:
+            raise ValidationError({'value': f"Valor inválido para o campo '{field.name_text.pt_br}' (field_id: {field.id})': {e}"})
+        
+        return data
 
     class Meta:
         model = SourceFieldValue
@@ -194,6 +215,7 @@ class UserSerializer(ModelSerializer):
             'email',
             'first_name',
             'last_name',
+            'is_staff',
             'occupation',
             'company',
             'country',
@@ -209,6 +231,7 @@ class UserPreviewSerializer(UserSerializer):
             'email',
             'first_name',
             'last_name',
+            'is_staff',
         ]
 
 class UserCreationSerializer(Serializer):
@@ -236,22 +259,50 @@ class UserTokenCreationSerializer(Serializer):
     email = EmailField(max_length=255)
     password = CharField(max_length=128)
 
+class ContentPreviewParamsSerializer(Serializer):
+    status__in = StringListField(required=False, source='status')
+    proposer_id = CharField(required=False)
+
+class ContentPreviewSerializer(ModelSerializer):
+    proposer = UserPreviewSerializer(read_only=True)
+    acceptor = UserPreviewSerializer(read_only=True)
+    rejector = UserPreviewSerializer(read_only=True)
+
+    class Meta:
+        model = Content
+        fields = [
+            'id',
+            'type',
+            'status',
+            'endorsements_count',
+            'proposer',
+            'proposer_comment',
+            'acceptor',
+            'rejector',
+            'proposed_at',
+            'accepted_at',
+            'rejected_at',
+        ]
+
 class ContentParamsSerializer(Serializer):
     with_user_endorsement_info = BooleanField(required=False)
 
 class ContentSerializer(ModelSerializer):
+    # both
+    source_id = IntegerField(required=False, source='content.source_id')
+    # write
+    content_proposer_id = IntegerField(write_only=True)
+    content_acceptor_id = IntegerField(write_only=True, required=False)
+    content_rejector_id = IntegerField(write_only=True, required=False)
+    content_proposer_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     # read
     content_status = CharField(read_only=True, source='content.status')
     content_proposer = UserPreviewSerializer(read_only=True, source='content.proposer')
+    # content_acceptor = UserPreviewSerializer(read_only=True, source='content.acceptor')
     endorsements_count = IntegerField(read_only=True, source='content.endorsements_count')
     proposed_at = DateTimeField(read_only=True, source='content.proposed_at')
     accepted_at = DateTimeField(read_only=True, source='content.accepted_at')
     rejected_at = DateTimeField(read_only=True, source='content.rejected_at')
-    # write
-    content_proposer_id = IntegerField(write_only=True)
-    content_proposer_comment = CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
-    # both
-    source_id = IntegerField(required=False, source='content.source_id')
     
     def __init__(self,  *args, **kwargs):
         self.content_type = kwargs.pop('content_type')
@@ -271,9 +322,12 @@ class ContentSerializer(ModelSerializer):
             data['user_endorsement_id'] = user_endorsements[0].id if user_endorsements else None
 
         return data
-
+    
     def to_internal_value(self, data):
-        return data # must skip default method to avoid source_id nesting on write
+        data = super().to_internal_value(data)
+        content_data = data.pop('content', {})
+
+        return dict(**data, **content_data) # revert content fields nesting by default method
     
     def validate(self, data):
         if self.content_type != 'plant' and not data.get('source_id'):
@@ -289,6 +343,14 @@ class ContentSerializer(ModelSerializer):
             proposer_id = validated_data.get('content_proposer_id'),
             proposer_comment = validated_data.get('content_proposer_comment'),
         )
+    
+    def update(self, instance, data):
+        instance.content.status = 'accepted'
+        instance.content.acceptor_id = data['content_acceptor_id']
+        instance.content.accepted_at = Now()
+        instance.content.save()
+
+        return instance
 
     class Meta:
         model = Content
@@ -296,8 +358,11 @@ class ContentSerializer(ModelSerializer):
             'source_id',
             'content_status',
             'content_proposer',
+            # 'content_acceptor',
             'content_proposer_id',
             'content_proposer_comment',
+            'content_acceptor_id',
+            'content_rejector_id',
             'endorsements_count',
             'proposed_at',
             'accepted_at',

@@ -8,7 +8,7 @@ class ST_Value(Func):
     ST_Value(raster rast, integer band, geometry pt, boolean exclude_nodata_value)
     """
     function = 'ST_Value'
-    output_field = FloatField() 
+    output_field = FloatField()
 
     def __init__(self, raster_field: str, point_geometry: Point, band=1, **kwargs):
         # This tells GeoDjango to treat 'point_geometry' as a spatial object

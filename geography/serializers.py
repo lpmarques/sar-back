@@ -79,6 +79,7 @@ class MunicipalitySerializer(ModelSerializer):
     name = CharField(read_only=True)
     state_id = IntegerField(read_only=True)
     country_id = IntegerField(read_only=True)
+    fiscal_module_size_m2 = IntegerField(read_only=True, source='fiscal_module_size_sqrm')
 
     class Meta:
         model = Municipality
@@ -87,11 +88,12 @@ class MunicipalitySerializer(ModelSerializer):
             'name',
             'state_id',
             'country_id',
+            'fiscal_module_size_m2',
         ]
 
 class BiomeParamsSerializer(Serializer):
-    vegetation_areas__state_id = IntegerField(required=False, allow_null=False, source='state_id')
     area__contains = PointParamField(required=False, source='latlong')
+    vegetation_areas__state_id = IntegerField(required=False, allow_null=False, source='state_id')
 
 class BiomeSerializer(ModelSerializer):
     name = CharField(read_only=True)
@@ -137,7 +139,7 @@ class SoilAcidityLevelSerializer(ModelSerializer):
         ]
 
 class SoilPhParamsSerializer(Serializer):
-    tile_extent__intersects = PointParamField(source='latlong')
+    valued_extent__intersects = PointParamField(source='latlong')
     country_id = IntegerField(required=False)
     state_id = IntegerField(required=False)
 
@@ -185,6 +187,8 @@ class ClimateNormalParamsSerializer(Serializer):
 class ClimateNormalSerializer(ModelSerializer):
     station_elevation_m = IntegerField(read_only=True, source='elevation_m')
     station_distance_m = IntegerField(read_only=True)
+    first_year = IntegerField(read_only=True, source='period_first_year')
+    last_year = IntegerField(read_only=True, source='period_last_year')
 
     class Meta:
         model = ClimateNormal
@@ -194,8 +198,8 @@ class ClimateNormalSerializer(ModelSerializer):
             'station_code',
             'station_elevation_m',
             'station_distance_m',
-            'period_first_year',
-            'period_last_year',
+            'first_year',
+            'last_year',
             'month',
             'precipitation_mm',
             'temperature_c_minimum',
@@ -204,14 +208,18 @@ class ClimateNormalSerializer(ModelSerializer):
         ]
 
 class ClimateNormalsSummary(Serializer):
-    first_year = IntegerField(read_only=True)
-    last_year = IntegerField(read_only=True)
     station_code = IntegerField(read_only=True)
     station_elevation_m = IntegerField(read_only=True)
     station_distance_m = IntegerField(read_only=True)
+    first_year = IntegerField(read_only=True)
+    last_year = IntegerField(read_only=True)
     annual_precipitation_mm = IntegerField(read_only=True)
-    temperature_c_minimum = IntegerField(read_only=True)
-    temperature_c_maximum = IntegerField(read_only=True)
+    coldest_month_temp_c_min = IntegerField(read_only=True)
+    coldest_month_temp_c_avg = IntegerField(read_only=True)
+    coldest_month_temp_c_max = IntegerField(read_only=True)
+    hottest_month_temp_c_min = IntegerField(read_only=True)
+    hottest_month_temp_c_avg = IntegerField(read_only=True)
+    hottest_month_temp_c_max = IntegerField(read_only=True)
 
     def to_representation(self, instance):
         data = pd.DataFrame(instance.values(
@@ -222,6 +230,7 @@ class ClimateNormalsSummary(Serializer):
             'period_last_year',
             'precipitation_mm',
             'temperature_c_minimum',
+            'temperature_c_average',
             'temperature_c_maximum',
         ))
 
@@ -233,8 +242,12 @@ class ClimateNormalsSummary(Serializer):
             'period_last_year',
         ]).agg(
             annual_precipitation_mm=('precipitation_mm', 'sum'),
-            temperature_c_minimum=('temperature_c_minimum', 'min'),
-            temperature_c_maximum=('temperature_c_maximum', 'max'),
+            coldest_month_temp_c_min=('temperature_c_minimum', 'min'),
+            coldest_month_temp_c_avg=('temperature_c_average', 'min'),
+            coldest_month_temp_c_max=('temperature_c_maximum', 'min'),
+            hottest_month_temp_c_min=('temperature_c_minimum', 'max'),
+            hottest_month_temp_c_avg=('temperature_c_average', 'max'),
+            hottest_month_temp_c_max=('temperature_c_maximum', 'max'),
         ).reset_index().rename({
             'period_first_year': 'first_year',
             'period_last_year': 'last_year',

@@ -3,6 +3,7 @@ from django.db.models.functions import Now
 from catalog.models import Plant, Trait
 from core.models import Content, Text, User
 from geography.models import Biome, Country, Municipality, State, VegetationType
+from agroforestry.querysets import FarmQuerySet, FieldQuerySet, SiteTraitQuerySet, SiteTraitValueQuerySet
 
 class CroppingPatternCrop(models.Model):
     pk = models.CompositePrimaryKey('pattern_id', 'pattern_row_id', 'position')
@@ -11,8 +12,8 @@ class CroppingPatternCrop(models.Model):
     plant = models.ForeignKey(Plant, models.DO_NOTHING)
     position = models.IntegerField()
     distance_to_next_position_cm = models.IntegerField()
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -26,8 +27,8 @@ class CroppingPatternRow(models.Model):
     position = models.IntegerField()
     distance_to_next_position_cm = models.IntegerField()
     copied_row = models.ForeignKey('self', models.DO_NOTHING, blank=True, null=True)
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -43,8 +44,8 @@ class CroppingPattern(models.Model):
     public_content = models.OneToOneField(Content, models.DO_NOTHING, blank=True, null=True)
     copied_pattern = models.ForeignKey('self', models.DO_NOTHING, blank=True, null=True)
     author = models.ForeignKey(User, models.DO_NOTHING)
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -55,7 +56,7 @@ class CroppingPattern(models.Model):
 
 class CroppingRowPurposeOption(models.Model):
     option_text = models.OneToOneField(Text, models.DO_NOTHING, db_comment='[diversidade, preenchimento, anuais, cobertura, outra]')
-    created_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -72,8 +73,8 @@ class RuleSet(models.Model):
     copied_rule_set = models.ForeignKey('self', models.DO_NOTHING, related_name='copy_rule_sets', blank=True, null=True)
     author = models.ForeignKey(User, models.DO_NOTHING)
     public = models.BooleanField()
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -102,10 +103,11 @@ class Farm(models.Model):
     site = models.OneToOneField('Site', models.DO_NOTHING)
     user = models.ForeignKey(User, models.DO_NOTHING)
 
+    objects = FarmQuerySet.as_manager()
+
     class Meta:
         managed = True
         db_table = '"agroforestry"."farms"'
-        unique_together = (('name', 'user'),)
 
 
 class Field(models.Model):
@@ -118,10 +120,11 @@ class Field(models.Model):
     cropping_pattern = models.ForeignKey(CroppingPattern, models.DO_NOTHING, blank=True, null=True)
     cropping_rule_set = models.ForeignKey(RuleSet, models.DO_NOTHING, blank=True, null=True)
 
+    objects = FieldQuerySet.as_manager()
+
     class Meta:
         managed = True
         db_table = '"agroforestry"."fields"'
-        unique_together = (('name', 'farm', 'user'),)
 
 
 class Function(models.Model):
@@ -130,7 +133,7 @@ class Function(models.Model):
     body = models.JSONField()
     return_schema = models.JSONField()
     description = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -146,8 +149,8 @@ class PlantSiteFitting(models.Model):
     fitting_function = models.ForeignKey(Function, models.DO_NOTHING)
     fitting_function_input = models.JSONField()
     fitting_weight = models.IntegerField()
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -161,20 +164,20 @@ class Site(models.Model):
         FLD = "field"
 
     type = models.CharField(choices=TYPE.choices)
-    center = models.PointField()
-    perimeter = models.GeometryField(blank=True, null=True)
+    location = models.PointField()
+    polygon = models.GeometryField(geography=True, blank=True, null=True)
     country = models.ForeignKey(Country, models.DO_NOTHING)
     state = models.ForeignKey(State, models.DO_NOTHING, blank=True, null=True)
     municipality = models.ForeignKey(Municipality, models.DO_NOTHING, blank=True, null=True)
     biome = models.ForeignKey(Biome, models.DO_NOTHING, blank=True, null=True)
     vegetation_type = models.ForeignKey(VegetationType, models.DO_NOTHING, blank=True, null=True)
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         managed = True
-        db_table = '"agroforestry"."site"'
+        db_table = '"agroforestry"."sites"'
 
 
 class SiteTrait(models.Model):
@@ -182,13 +185,17 @@ class SiteTrait(models.Model):
     name_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='name_text_site_traits')
     section = models.CharField()
     section_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='section_text_site_traits')
+    description_text = models.OneToOneField(Text, models.DO_NOTHING, blank=True, null=True, related_name='description_text_site_traits')
     schema = models.JSONField()
+    position = models.IntegerField()
     is_nullable = models.BooleanField()
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
-    text_value_options = models.ManyToManyField(Text, through='agroforestry.SiteTraitTextValueOption')
+    text_value_options = models.ManyToManyField(Text, through='agroforestry.SiteTraitTextValueOption', through_fields=('trait', 'value_text'))
+
+    objects = SiteTraitQuerySet.as_manager()
 
     class Meta:
         managed = True
@@ -196,9 +203,10 @@ class SiteTrait(models.Model):
 
 
 class SiteTraitTextValueOption(models.Model):
-    pk = models.CompositePrimaryKey('trait', 'option_text')
-    trait = models.ForeignKey(SiteTrait, models.DO_NOTHING)
-    option_text = models.ForeignKey(Text, models.DO_NOTHING)
+    pk = models.CompositePrimaryKey('trait', 'value_text')
+    trait = models.ForeignKey(SiteTrait, models.DO_NOTHING, related_name='site_trait_text_value_options')
+    value_text = models.ForeignKey(Text, models.DO_NOTHING, related_name='site_trait_value_text_options')
+    description_text = models.ForeignKey(Text, models.DO_NOTHING, blank=True, null=True, related_name='site_trait_description_text_options')
     created_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
@@ -208,18 +216,21 @@ class SiteTraitTextValueOption(models.Model):
 
 
 class SiteTraitValue(models.Model):
-    site = models.ForeignKey(Site, models.DO_NOTHING, blank=True, null=True)
+    site = models.ForeignKey(Site, models.DO_NOTHING, blank=True, null=True, related_name='trait_values')
     trait = models.ForeignKey(SiteTrait, models.DO_NOTHING)
     value = models.CharField()
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     texts = models.ManyToManyField(Text, through='agroforestry.SiteTraitValueText')
 
+    objects = SiteTraitValueQuerySet.as_manager()
+
     class Meta:
         managed = True
         db_table = '"agroforestry"."site_trait_values"'
+        unique_together = (('site', 'trait', 'deleted_at'),)
 
 
 class SiteTraitValueText(models.Model):
