@@ -70,11 +70,3 @@ def get_trait_value(site_trait_value_id, user_id):
         raise PermissionDenied('Você não tem autorização para acessar informação referentes a esse local.')
     
     return trait_value
-
-def get_value_texts(trait: SiteTrait, value) -> List[Text]:
-    if trait.schema['type'] == "array" and trait.schema['items']['type'] == "string":
-        return Text.objects.filter(**{'pt_br__in': value})
-    elif trait.schema['type'] == "string":
-        return Text.objects.filter(**{'pt_br': value})
-
-    return []
