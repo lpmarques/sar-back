@@ -1,4 +1,5 @@
 from django.contrib.gis.db import models
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db.models.functions import Now
 from geography.querysets import ClimateNormalQuerySet, CountryQuerySet, SoilAcidityLevelQuerySet, SoilPhMapQuerySet, SoilTextureTypeQuerySet
 from core.models import Source, Text
@@ -56,12 +57,20 @@ class Country(models.Model):
 
 
 class MonthlyDroughtArea(models.Model):
+    class DROUGHT_LEVEL(models.TextChoices):
+        L0 = "Si", "ausente"
+        L1 = "S0", "fraca"
+        L2 = "S1", "moderada"
+        L3 = "S2", "grave"
+        L4 = "S3", "extrema"
+        L5 = "S4", "excepcional"
+
     country = models.ForeignKey(Country, on_delete=models.DO_NOTHING)
     area = models.GeometryField()
     year = models.IntegerField()
     month = models.IntegerField()
-    drought_level = models.IntegerField()
-    drought_level_code = models.CharField(blank=True, null=True)
+    drought_level = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)])
+    drought_level_code = models.CharField(blank=True, null=True, choices=DROUGHT_LEVEL.choices)
     source = models.ForeignKey(Source, on_delete=models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
