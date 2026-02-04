@@ -168,7 +168,7 @@ class LandSummaryView(APIView):
         state_filters = StateParamsSerializer(request.query_params).data
         state = State.objects.defer(*GEOM_FIELDS).filter(
             **dict(state_filters, country_id=country.id)
-        ).first()
+        ).first() # TODO: tratar casos em que o latlong não corresponde a nenhum país (aqui e no frontend)
         
         biome_filters = BiomeParamsSerializer(request.query_params).data
         biome = Biome.objects.defer(*GEOM_FIELDS).filter(

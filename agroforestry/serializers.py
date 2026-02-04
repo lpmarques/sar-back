@@ -1,19 +1,32 @@
+from django.apps import apps
 from django.contrib.gis.geos import GEOSGeometry
 from django.db import transaction
 from django.db.models import Q
 from django.db.models.functions import Now
+from py_mini_racer import MiniRacer
 from jsonschema import FormatChecker, validate
+from rest_framework.serializers import BooleanField, CharField, ChoiceField, DateTimeField, IntegerField, JSONField, ModelSerializer, Serializer, SerializerMethodField, ValidationError
 from rest_framework_gis.fields import GeometryField
-from rest_framework.serializers import BooleanField, CharField, DateTimeField, IntegerField, JSONField, ListSerializer, ModelSerializer, SerializerMethodField, ValidationError
+from catalog.models import InvasionRiskRegion
+from catalog.serializers.models import PlantSerializer
 from core.serializers import UserPreviewSerializer
 from core.models import Text
 from geography.models import Biome, Country, Municipality, State, VegetationArea
 from geography.serializers import BiomeSerializer, CountrySerializer, MunicipalitySerializer, StateSerializer, VegetationTypeSerializer
-from agroforestry.models import Farm, Field, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
-from agroforestry.services import get_value_texts
-from agroforestry.utils import none_if_empty
+from agroforestry.models import Farm, Field, Function, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
+from agroforestry.utils import none_if_empty, none_if_nan
 from typing import List, Union
 import json
+
+class FunctionSerializer(ModelSerializer):
+    class Meta:
+        model = Function
+        fields = [
+            'name',
+            'input_schema',
+            'body',
+            'return_schema',
+        ]
 
 class SiteTraitTextValueOptionSerializer(ModelSerializer):
     value = CharField(read_only=True, source='value_text.pt_br')
@@ -26,6 +39,112 @@ class SiteTraitTextValueOptionSerializer(ModelSerializer):
             'description',
         ]
         
+class TraitsFitnessSerializer(Serializer):
+    plant_trait_slug = CharField()
+    fitness_score = IntegerField()
+
+class SitePlantFitnessSerializer(Serializer):
+    plant_id = IntegerField()
+    accepted_taxon_name = CharField()
+    color_hex = CharField()
+    is_native = BooleanField()
+    is_invasive = BooleanField()
+    eicat_category = ChoiceField(choices=InvasionRiskRegion.EICAT)
+    # traits_fitness = TraitsFitnessSerializer(many=True)
+    fitness_score = IntegerField()
+    nativity_score = IntegerField()
+    
+    invasion_risk_penalties = {
+        InvasionRiskRegion.EICAT.MT.value: -25,
+        InvasionRiskRegion.EICAT.MJ.value: -50,
+        InvasionRiskRegion.EICAT.MV.value: -100
+    }
+
+    def __init__(self, *args, **kwargs):
+        functions = FunctionSerializer(Function.objects.all(), many=True)
+        
+        self.js_ctx = MiniRacer()
+        self.js_ctx.eval('\n'.join([f['body'] for f in functions.data]))
+
+        super().__init__(*args, **kwargs)
+
+    def render_function_input(self, template, values):
+        return { k: values[v] if v in values.keys() else v for k, v in template.items() }
+
+    def parse_plant_trait_value(self, value, data_type): # TODO: somewhat repeated code: try moving to static method in trait serializer
+        if data_type == "varchar[]":
+            return value
+        elif data_type == "varchar":
+            return value[0]
+
+        return json.loads(value)
+
+    def parse_site_trait_value(self, value, schema): # TODO: somewhat repeated code: try moving to static method in trait serializer
+        if schema['type'] == "array" and schema['items']['type'] == "string":
+            return value
+        elif schema['type'] == "string":
+            return value[0]
+
+        return json.loads(value)
+
+    def parse_values(self, fitting):
+        values = {
+            '{plant_trait}': self.parse_plant_trait_value(fitting['plant_trait_value'], fitting['plant_trait_type']),
+            '{site_trait}': self.parse_site_trait_value(fitting['site_trait_value'], fitting['site_trait_schema']),
+        }
+
+        if fitting['fitting_pre_transforms']:
+            for prop, transform in fitting['fitting_pre_transforms'].items():
+                values[f'{{{prop}}}'] = self.js_ctx.call(
+                    transform['function'],
+                    self.render_function_input(transform['input'], values)
+                )
+            
+        return values
+
+    def calc_traits_fitness_score(self, fitting):
+        values = self.parse_values(fitting)
+        function_input = self.render_function_input(fitting['fitting_function_input'], values)
+
+        score = self.js_ctx.call(
+            fitting['fitting_function_name'],
+            function_input
+        )
+        return score
+    
+    def calc_plant_nativity_score(self, is_native, eicat_category=None):
+        if eicat_category:
+            return self.invasion_risk_penalties[eicat_category]
+        if is_native:
+            return 10
+
+        return 0
+
+    def to_representation(self, df):
+        data = dict(zip(
+            df.index.names,
+            [none_if_nan(value) for value in df.index.to_list()[0]]
+        )) # extract plant data from dataframe index
+        df.reset_index(drop=True, inplace=True)
+
+        data['fitness_score'] = sum(df.apply(func=self.calc_traits_fitness_score, axis=1))
+        data['nativity_score'] = self.calc_plant_nativity_score(data['is_native'], data['eicat_category'])
+
+        return super().to_representation(data)
+    
+    class Meta(PlantSerializer.Meta):
+        fields = [
+            'plant_id',
+            'accepted_taxon_name',
+            'color_hex',
+            'is_native',
+            'is_invasive',
+            'eicat_category',
+            'fitness_score',
+            'nativity_score',
+            # 'traits_fitness',
+        ]
+
 class SiteTraitSerializer(ModelSerializer):
     slug = CharField(read_only=True, source='name')
     name = CharField(read_only=True, source='name_text.pt_br')
@@ -294,10 +413,10 @@ class SiteSerializer(ModelSerializer):
 
         return data
     
-    def create_trait_values(self, validated_data):
+    def create_trait_values(self, site: Site, validated_data):
         trait_values = [
             SiteTraitValue(
-                site_id=self.site.id,
+                site_id=site.id,
                 trait_id=data['trait_id'],
                 value=data['value'],
             ) for data in validated_data['trait_values']
@@ -312,7 +431,7 @@ class SiteSerializer(ModelSerializer):
             if value_type == "string" or value_type == "array" and trait.schema['items']['type'] == "string":
                 trait_value.texts.add(*texts)
 
-    def update_trait_values(self, site, validated_data):
+    def update_trait_values(self, site: Site, validated_data):
         with transaction.atomic():
             trait_values_to_delete = []
             trait_values_to_update = []
@@ -332,7 +451,7 @@ class SiteSerializer(ModelSerializer):
                     trait_value.deleted_at = Now() # pre-existing trait values absent from data must be marked as deleted
                     trait_values_to_delete.append(trait_value)
 
-            self.create_trait_values(validated_data) # any remaining data refers to new trait values which must be created
+            self.create_trait_values(site, validated_data) # any remaining data refers to new trait values which must be created
             
             SiteTraitValue.objects.bulk_update(trait_values_to_update, ["value", "updated_at"]) # pre-existing values passed are updated
             SiteTraitValue.objects.bulk_update(trait_values_to_delete, ["deleted_at"]) # pre-existing values absent are marked as deleted
@@ -346,7 +465,7 @@ class SiteSerializer(ModelSerializer):
 
     def create(self, validated_data):
         with transaction.atomic():
-            self.site = Site.objects.create(
+            site = Site.objects.create(
                 type = self.site_type,
                 location = validated_data['location'],
                 polygon = validated_data.get('polygon'),
@@ -364,9 +483,9 @@ class SiteSerializer(ModelSerializer):
                         'texts': texts,
                     }) for trait, texts, data in zip(self.traits, self.trait_values_texts, validated_data.get('trait_values'))
                 ]
-                self.create_trait_values(validated_data)
+                self.create_trait_values(site, validated_data)
 
-            return self.site
+            return site
 
     def update(self, site, validated_data):
         with transaction.atomic():

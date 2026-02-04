@@ -1,12 +1,15 @@
+from django.apps import apps
+from django.db.models import Prefetch, Q
 from django.db.models.functions import Now
 from rest_framework import status
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
-from agroforestry.models import Farm, Field, SiteTrait, SiteTraitValue
-from agroforestry.serializers import DetachedSiteTraitValueSerializer, FarmSerializer, FieldSerializer, SiteTraitSerializer, SiteTraitValueSerializer
-from agroforestry.services import delete_farm, delete_field, get_farm, get_field, get_site_owner_id, get_trait_value
+from agroforestry.models import Farm, Field, PlantSiteFitting, Site, SiteTrait, SiteTraitValue
+from agroforestry.serializers import DetachedSiteTraitValueSerializer, FarmSerializer, FieldSerializer, SitePlantFitnessSerializer, SiteTraitSerializer, SiteTraitValueSerializer
+from agroforestry.services import delete_farm, delete_field, get_farm, get_field, get_site_owner_id, get_site_plants_fitness_data, get_trait_value
+from catalog.models import Plant
 
 class FarmView(APIView):
     def get_queryset(self):
@@ -14,7 +17,7 @@ class FarmView(APIView):
 
     def get(self, request, farm_id):
         try:
-            farm = get_farm(farm_id, request.user.id)
+            farm = get_farm(farm_id, request.user.id, queryset=Farm.objects.denormalized().with_area_m2())
         except APIException as err:
             return Response({'msg': err.detail}, status=err.status_code)
 
@@ -45,7 +48,7 @@ class FarmView(APIView):
     
     def put(self, request, farm_id):
         try:
-            farm = get_farm(farm_id, request.user.id)
+            farm = get_farm(farm_id, request.user.id, queryset=Farm.objects.denormalized())
         except APIException as err:
             return Response({'msg': err.detail}, status=err.status_code)
 
@@ -56,10 +59,10 @@ class FarmView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            serializer.save()
-        except Exception as err:
-            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        serializer.save()
+        # try:
+        # except Exception as err:
+        #     return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         content = {
             'msg': 'Propriedade atualizada com sucesso.'
@@ -94,7 +97,7 @@ class FarmListView(FarmView):
 
 class FieldView(APIView):
     def get_queryset(self):
-        return Field.objects.active().denormalized()
+        return Field.objects.active().denormalized().with_area_m2()
 
     def get(self, request, field_id):
         try:
@@ -278,6 +281,44 @@ class SiteTraitValueListView(SiteTraitValueView):
         serializer = DetachedSiteTraitValueSerializer(trait_values, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class SitePlantFitnessView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, site_id, plant_id):
+        site_plant_fitness = get_site_plants_fitness_data(site_id, plant_id)
+        
+        serializer = SitePlantFitnessSerializer(site_plant_fitness)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class SitePlantFitnessListView(SitePlantFitnessView):
+    def get(self, request, site_id):
+        site_plants_fitness = get_site_plants_fitness_data(site_id)
+        
+        serializer = SitePlantFitnessSerializer(site_plants_fitness, many=True)
+        ordered_data = sorted(serializer.data, key=lambda x: x['fitness_score']+x['nativity_score'], reverse=True)
+
+        return Response(ordered_data, status=status.HTTP_200_OK)
+
+class FarmPlantFitnessView(SitePlantFitnessView):
+    def get(self, request, farm_id, plant_id):
+        try:
+            farm = get_farm(farm_id, request.user.id, queryset=Farm.objects)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
+        
+        return super().get(request, farm.site_id, plant_id)
+
+class FarmPlantFitnessListView(SitePlantFitnessListView):
+    def get(self, request, farm_id):
+        try:
+            farm = get_farm(farm_id, request.user.id, queryset=Farm.objects)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
+        
+        return super().get(request, farm.site_id)
+
     
 class FarmTraitValueListView(SiteTraitValueListView):
     def get(self, request, farm_id):
@@ -291,8 +332,8 @@ class FarmTraitValueListView(SiteTraitValueListView):
 class FieldTraitValueListView(SiteTraitValueListView):
     def get(self, request, field_id):
         try:
-            farm = get_field(field_id, request.user.id)
+            field = get_field(field_id, request.user.id)
         except APIException as err:
             return Response({'msg': err.detail}, status=err.status_code)
         
-        return super().get(request, farm.site_id)
+        return super().get(request, field.site_id)

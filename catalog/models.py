@@ -20,8 +20,8 @@ class Plant(models.Model):
 
 class InvasionRiskRegion(models.Model):
     class EICAT(models.TextChoices):
-        MO = "Moderate", "moderate"
-        MR = "Major", "major"
+        MT = "Moderate", "moderate"
+        MJ = "Major", "major"
         MV = "Massive", "massive"
 
     content = models.OneToOneField(Content, models.DO_NOTHING)
@@ -129,7 +129,7 @@ class TraitTextValueOption(models.Model):
 class TraitValue(models.Model):
     content = models.OneToOneField(Content, models.DO_NOTHING, related_name='trait_value')
     plant = models.ForeignKey(Plant, models.DO_NOTHING, related_name='trait_values')
-    trait = models.ForeignKey(Trait, models.DO_NOTHING)
+    trait = models.ForeignKey(Trait, models.DO_NOTHING, related_name='values')
     value = models.CharField()
 
     texts = models.ManyToManyField(Text, through='catalog.TraitValueText')
@@ -148,4 +148,4 @@ class TraitValueText(models.Model):
 
     class Meta:
         managed = True
-        db_table = '"catalog"."trait_values_texts"'
+        db_table = '"catalog"."trait_values_texts"' # TODO: change this table name to trait_value_texts

@@ -129,8 +129,8 @@ class Field(models.Model):
 
 class Function(models.Model):
     name = models.CharField(unique=True)
-    arguments_schema = models.JSONField(blank=True, null=True)
-    body = models.JSONField()
+    input_schema = models.JSONField(blank=True, null=True)
+    body = models.TextField()
     return_schema = models.JSONField()
     description = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(db_default=Now())
@@ -143,8 +143,8 @@ class Function(models.Model):
 
 class PlantSiteFitting(models.Model):
     pk = models.CompositePrimaryKey('plant_trait', 'site_trait')
-    plant_trait = models.ForeignKey(Trait, models.DO_NOTHING)
-    site_trait = models.ForeignKey('SiteTrait', models.DO_NOTHING)
+    plant_trait = models.ForeignKey(Trait, models.DO_NOTHING, related_name='site_fitting')
+    site_trait = models.ForeignKey('SiteTrait', models.DO_NOTHING, related_name='plant_fitting')
     pre_transforms = models.JSONField(blank=True, null=True)
     fitting_function = models.ForeignKey(Function, models.DO_NOTHING)
     fitting_function_input = models.JSONField()
@@ -217,7 +217,7 @@ class SiteTraitTextValueOption(models.Model):
 
 class SiteTraitValue(models.Model):
     site = models.ForeignKey(Site, models.DO_NOTHING, blank=True, null=True, related_name='trait_values')
-    trait = models.ForeignKey(SiteTrait, models.DO_NOTHING)
+    trait = models.ForeignKey(SiteTrait, models.DO_NOTHING, related_name='values')
     value = models.CharField()
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
