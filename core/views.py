@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from django.contrib.auth import authenticate
-from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.db.models.functions import Now
 from rest_framework import status
@@ -355,7 +354,7 @@ class ContentEndorsementView(APIView):
         return Response(content, status=status.HTTP_200_OK)
     
 
-class ContentEndorsementListView(APIView):
+class ContentEndorsementListView(ContentEndorsementView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
@@ -418,7 +417,7 @@ class SourceView(APIView):
         return Response(content, status=status.HTTP_201_CREATED)
 
 
-class SourceListView(APIView):
+class SourceListView(SourceView):
     permission_classes = [AllowAny]
 
     def get(self, request):

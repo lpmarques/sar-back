@@ -3,7 +3,6 @@ from . import views
 
 urlpatterns = [
     path('farms', views.FarmListView.as_view()),
-    path('farms', views.FarmView.as_view()),
     path('farms/<int:farm_id>', views.FarmView.as_view()),
     path('farms/<int:farm_id>/fields', views.FieldListView.as_view()),
     path('farms/<int:farm_id>/site-trait-values', views.FarmTraitValueListView.as_view()),
