@@ -115,7 +115,6 @@ class TraitValueSerializer(ContentSerializer):
         return data
     
     def to_internal_value(self, data):
-        data = super().to_internal_value(data)
         if self.partial: # skip fields parsing when partial serializer (proposal acceptance only)
             return data
         
@@ -356,6 +355,7 @@ class TaxonSerializer(ContentSerializer):
             )
         
     def update(self, taxon, data):
+        # TODO: buscar nome compatível na invasion_risk_regions e criar FK se encontrar match (independente se nome ou sinônimo)
         # TODO: tratar casos em que é necessário aceitar, como nome aceito, um nome já aceito como sinônimo da mesma planta ou vice-e-versa
         accepted_taxon = None
         if taxon.taxonomic_status == "accepted":
@@ -678,6 +678,8 @@ class PlantCreationSerializer(ContentSerializer):
             plant.accepted_family_name = taxon.family
             plant.color_hex = md5_to_color(string_to_md5(accepted_taxon_name))
             plant.save()
+
+            # TODO: buscar nome compatível na invasion_risk_regions e criar FK se encontrar match
 
             return plant
 
