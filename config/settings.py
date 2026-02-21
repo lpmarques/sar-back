@@ -35,7 +35,7 @@ DATABASES = {
         'PORT': env.int('DATABASE_PORT'),
         'OPTIONS': {
             'sslmode': env('DATABASE_SSLMODE', default='require'),
-            'options': env('DATABASE_OPTIONS', default='-c search_path=public,core,catalog,geography,agroforestry')
+            'options': env('DATABASE_OPTIONS', default='-c search_path=public,core,catalog,geography')
         },
     }
 }
@@ -54,7 +54,6 @@ INSTALLED_APPS = [
 	'authemail',
     'corsheaders',
     'debug_toolbar',
-    'agroforestry',
     'catalog',
     'core',
     'geography',

@@ -23,5 +23,4 @@ urlpatterns = [
     path('catalog/', include('catalog.urls')),
     path('core/', include('core.urls')),
     path('geography/', include('geography.urls')),
-    path('agroforestry/', include('agroforestry.urls')),
 ] + debug_toolbar_urls()
