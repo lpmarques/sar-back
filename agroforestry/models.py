@@ -14,15 +14,15 @@ from django.db.models.functions import Now
 from catalog.models import Plant, Trait
 from core.models import Content, Text, User
 from geography.models import Biome, Country, Municipality, State, VegetationType
-from agroforestry.querysets import FarmQuerySet, FieldQuerySet, SiteTraitQuerySet, SiteTraitValueQuerySet
+from agroforestry.querysets import CroppingPatternQuerySet, FarmQuerySet, FieldQuerySet, SiteTraitQuerySet, SiteTraitValueQuerySet
 
 class CroppingPatternCrop(models.Model):
-    pk = models.CompositePrimaryKey('pattern_id', 'pattern_row_id', 'position')
-    pattern = models.ForeignKey('CroppingPattern', models.DO_NOTHING)
-    pattern_row = models.ForeignKey('CroppingPatternRow', models.DO_NOTHING)
+    pk = models.CompositePrimaryKey('pattern_row_id', 'position')
+    pattern = models.ForeignKey('CroppingPattern', models.DO_NOTHING, related_name='pattern_crops')
+    pattern_row = models.ForeignKey('CroppingPatternRow', models.DO_NOTHING, related_name='row_crops')
     plant = models.ForeignKey(Plant, models.DO_NOTHING)
-    position = models.IntegerField()
-    distance_to_next_position_cm = models.IntegerField()
+    position = models.SmallIntegerField()
+    distance_to_next_crop_m = models.DecimalField(max_digits=5, decimal_places=2)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
@@ -33,11 +33,10 @@ class CroppingPatternCrop(models.Model):
 
 
 class CroppingPatternRow(models.Model):
-    pattern = models.ForeignKey('CroppingPattern', models.DO_NOTHING)
-    purpose_text = models.ForeignKey(Text, models.DO_NOTHING)
-    position = models.IntegerField()
-    distance_to_next_position_cm = models.IntegerField()
-    copied_row = models.ForeignKey('self', models.DO_NOTHING, blank=True, null=True)
+    pattern = models.ForeignKey('CroppingPattern', models.DO_NOTHING, related_name='pattern_rows')
+    purpose = models.ForeignKey('CroppingRowPurpose', models.DO_NOTHING, blank=True, null=True)
+    position = models.SmallIntegerField()
+    distance_to_next_row_m = models.DecimalField(max_digits=5, decimal_places=2)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
@@ -51,13 +50,16 @@ class CroppingPatternRow(models.Model):
 class CroppingPattern(models.Model):
     name = models.CharField()
     description = models.TextField(blank=True, null=True)
-    is_public = models.BooleanField()
+    is_public = models.BooleanField(db_default=True)
+    rows_hash = models.CharField(max_length=100)
     public_content = models.OneToOneField(Content, models.DO_NOTHING, blank=True, null=True)
-    copied_pattern = models.ForeignKey('self', models.DO_NOTHING, blank=True, null=True)
+    source_pattern = models.ForeignKey('self', models.DO_NOTHING, blank=True, null=True)
     author = models.ForeignKey(User, models.DO_NOTHING)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
+
+    objects = CroppingPatternQuerySet.as_manager()
 
     class Meta:
         managed = True
@@ -65,14 +67,14 @@ class CroppingPattern(models.Model):
         unique_together = (('name', 'author'),)
 
 
-class CroppingRowPurposeOption(models.Model):
-    option_text = models.OneToOneField(Text, models.DO_NOTHING, db_comment='[diversidade, preenchimento, anuais, cobertura, outra]')
+class CroppingRowPurpose(models.Model):
+    text = models.OneToOneField(Text, models.DO_NOTHING, db_comment='[diversidade, preenchimento, anuais, cobertura, outra]')
     created_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         managed = True
-        db_table = '"agroforestry"."cropping_row_purpose_options"'
+        db_table = '"agroforestry"."cropping_row_purpose"'
 
 
 class RuleSet(models.Model):
@@ -124,11 +126,14 @@ class Farm(models.Model):
 class Field(models.Model):
     name = models.CharField()
     site = models.OneToOneField('Site', models.DO_NOTHING)
-    farm = models.ForeignKey(Farm, models.DO_NOTHING)
+    farm = models.ForeignKey(Farm, models.DO_NOTHING, related_name='fields')
     user = models.ForeignKey(User, models.DO_NOTHING)
-    cropping_summary = models.JSONField(blank=True, null=True)
-    cropping_geometry = models.JSONField(blank=True, null=True)
-    cropping_pattern = models.ForeignKey(CroppingPattern, models.DO_NOTHING, blank=True, null=True)
+    rows_angle_deg = models.SmallIntegerField(blank=True, null=True)
+    rows_offset_m = models.DecimalField(max_digits=6, decimal_places=2, blank=True, null=True)
+    crops_offset_m = models.DecimalField(max_digits=6, decimal_places=2, blank=True, null=True)
+    cropping_summary = models.JSONField(blank=True, null=True) # TODO: JSON with list of objects containing volume, density and area occupied by each crop + general infos on the plant (to serve as input to cropping rule functions)
+    cropping_geometry = models.JSONField(blank=True, null=True) # TODO: GeoJSON with FeatureCollection locating rows and crops (crops may be summarized as multipoint features with common properties - one feat per plant)
+    cropping_pattern = models.ForeignKey(CroppingPattern, models.DO_NOTHING, blank=True, null=True, related_name='pattern_fields')
     cropping_rule_set = models.ForeignKey(RuleSet, models.DO_NOTHING, blank=True, null=True)
 
     objects = FieldQuerySet.as_manager()
@@ -252,3 +257,4 @@ class SiteTraitValueText(models.Model):
     class Meta:
         managed = True
         db_table = '"agroforestry"."site_trait_value_texts"'
+            

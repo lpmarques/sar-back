@@ -9,6 +9,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses>.
 
+from abc import ABC
+
 from django.apps import apps
 from django.db.models import Prefetch, Q
 from django.db.models.functions import Now
@@ -17,10 +19,10 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
-from agroforestry.models import Farm, Field, PlantSiteFitting, Site, SiteTrait, SiteTraitValue
-from agroforestry.serializers import DetachedSiteTraitValueSerializer, FarmSerializer, FieldSerializer, SitePlantFitnessSerializer, SiteTraitSerializer, SiteTraitValueSerializer
-from agroforestry.services import delete_farm, delete_field, get_farm, get_field, get_site_owner_id, get_site_plants_fitness_data, get_trait_value
-from catalog.models import Plant
+from agroforestry.models import CroppingPattern, Farm, Field, PlantSiteFitting, Site, SiteTrait, SiteTraitValue
+from agroforestry.serializers import CroppingPatternParamsSerializer, CroppingPatternSerializer, DetachedSiteTraitValueSerializer, FarmSerializer, FieldSerializer, SitePlantFitnessSerializer, SiteTraitSerializer, SiteTraitValueSerializer
+from agroforestry.services import delete_cropping_pattern, delete_farm, delete_field, get_cropping_pattern, get_farm, get_field, get_site, get_site_plants_fitness_data, get_trait_value
+from catalog.services import get_plant
 
 class FarmView(APIView):
     def get_queryset(self):
@@ -63,17 +65,14 @@ class FarmView(APIView):
         except APIException as err:
             return Response({'msg': err.detail}, status=err.status_code)
 
-        data = request.data
-        data.update({'user_id': request.user.id})
-
         serializer = FarmSerializer(farm, data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer.save()
-        # try:
-        # except Exception as err:
-        #     return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        try:
+            serializer.save()
+        except Exception as err:
+            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         content = {
             'msg': 'Propriedade atualizada com sucesso.'
@@ -184,9 +183,12 @@ class FieldView(APIView):
 
 class FieldListView(FieldView):
     def get(self, request, farm_id):
-        fields = self.get_queryset().filter(user_id=request.user.id, farm_id=farm_id)
-
-        serializer = FieldSerializer(fields, many=True)
+        try:
+            farm = get_farm(farm_id, request.user.id)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
+        
+        serializer = FieldSerializer(farm.fields.active(), many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -220,14 +222,14 @@ class SiteTraitValueView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
+        try:
+            site = get_site(request.data['site_id'], request.user.id)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
+
         serializer = DetachedSiteTraitValueSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        if request.user.id != get_site_owner_id(serializer.site):
-            return Response({
-                'msg': 'Você não tem autorização para publicar informações referentes a esse local.'
-            }, status=status.HTTP_403_FORBIDDEN)
 
         try:
             object = serializer.save()
@@ -236,7 +238,7 @@ class SiteTraitValueView(APIView):
 
         content = {
             'site_trait_value_id': object.id,
-            'msg': 'Informação publicada com sucesso.'
+            'msg': 'Informação cadastrada com sucesso.'
         }
         
         return Response(content, status=status.HTTP_201_CREATED)
@@ -247,14 +249,9 @@ class SiteTraitValueView(APIView):
         except APIException as err:
             return Response({'msg': err.detail}, status=err.status_code)
         
-        serializer = SiteTraitValueSerializer(trait_value, data=request.data)
+        serializer = DetachedSiteTraitValueSerializer(trait_value, data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        if request.user.id != get_site_owner_id(serializer.site):
-            return Response({
-                'msg': 'Você não tem autorização para publicar informações referentes a esse local.'
-            }, status=status.HTTP_403_FORBIDDEN)
 
         try:
             object = serializer.save()
@@ -286,7 +283,7 @@ class SiteTraitValueView(APIView):
         
         return Response(content, status=status.HTTP_200_OK)
 
-class SiteTraitValueListView(SiteTraitValueView):
+class SiteTraitValueListView(SiteTraitValueView, ABC):
     def get(self, request, site_id):
         trait_values = self.get_queryset().filter(site_id=site_id)
         serializer = DetachedSiteTraitValueSerializer(trait_values, many=True)
@@ -316,10 +313,11 @@ class FarmPlantFitnessView(SitePlantFitnessView):
     def get(self, request, farm_id, plant_id):
         try:
             farm = get_farm(farm_id, request.user.id, queryset=Farm.objects)
+            plant = get_plant(plant_id)
         except APIException as err:
             return Response({'msg': err.detail}, status=err.status_code)
         
-        return super().get(request, farm.site_id, plant_id)
+        return super().get(request, farm.site_id, plant.id)
 
 class FarmPlantFitnessListView(SitePlantFitnessListView):
     def get(self, request, farm_id):
@@ -330,7 +328,6 @@ class FarmPlantFitnessListView(SitePlantFitnessListView):
         
         return super().get(request, farm.site_id)
 
-    
 class FarmTraitValueListView(SiteTraitValueListView):
     def get(self, request, farm_id):
         try:
@@ -348,3 +345,103 @@ class FieldTraitValueListView(SiteTraitValueListView):
             return Response({'msg': err.detail}, status=err.status_code)
         
         return super().get(request, field.site_id)
+
+class CroppingPatternView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return CroppingPattern.objects.denormalized()
+    
+    def get(self, request, pattern_id):
+        try:
+            pattern = get_cropping_pattern(pattern_id, request.user.id)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
+
+        serializer = CroppingPatternSerializer(
+            pattern,
+            params=CroppingPatternParamsSerializer(request.query_params).data
+        )
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        data = request.data
+        data.update({'author_id': request.user.id})
+
+        serializer = CroppingPatternSerializer(data=data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            object = serializer.save()
+        except Exception as err:
+            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        content = {
+            'pattern_id': object.id,
+            'msg': 'Padrão cadastrado com sucesso.'
+        }
+        
+        return Response(content, status=status.HTTP_201_CREATED)
+
+    def put(self, request, pattern_id):
+        try:
+            pattern = get_cropping_pattern(pattern_id, request.user.id)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
+
+        data = request.data
+        data.update({'author_id': request.user.id})
+        
+        serializer = CroppingPatternSerializer(pattern, data=data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            object = serializer.save()
+        except Exception as err:
+            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        content = {
+            'pattern_id': object.id,
+            'msg': 'Padrão atualizado com sucesso.'
+        }
+        
+        return Response(content, status=status.HTTP_201_CREATED)
+    
+    def delete(self, request, pattern_id):
+        try:
+            pattern = get_cropping_pattern(pattern_id, request.user.id)
+        except APIException as err:
+            return Response({'msg': err.detail}, status=err.status_code)
+        
+        try:
+            delete_cropping_pattern(pattern)
+        except Exception as err:
+            return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        content = {
+            'msg': 'Padrão removido com sucesso.'
+        }
+        
+        return Response(content, status=status.HTTP_200_OK)
+
+class CroppingPattenListView(CroppingPatternView):
+    def fetch_filter_params(self, params_data: dict):
+        return { key.replace('pattern_', ''): value for key, value in params_data.items() if f'pattern_' in key }
+
+    def get(self, request):
+        params = CroppingPatternParamsSerializer(request.query_params).data
+        filter_params = self.fetch_filter_params(params)
+
+        public_patterns = self.get_queryset().active().public().filter(**filter_params)
+        private_patterns = self.get_queryset().active().private(author_id=request.user.id).filter(**filter_params)
+        
+        serializer = CroppingPatternSerializer(
+            public_patterns.union(private_patterns),
+            many=True,
+            params=params
+        )
+
+        return Response(serializer.data, status=status.HTTP_200_OK)

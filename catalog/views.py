@@ -155,12 +155,10 @@ class TaxonView(ContentView):
     model_class = Taxon
     serializer_class = TaxonSerializer
 
-
 class TaxonListView(ContentListView):
     model_class = Taxon
     serializer_class = TaxonSerializer
     params_serializer_class = TaxonParamsSerializer
-
 
 class PlantTaxonListView(PlantContentListView, TaxonListView):
     pass

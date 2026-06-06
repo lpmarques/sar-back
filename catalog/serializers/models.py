@@ -742,3 +742,14 @@ class PlantSerializer(ContentSerializer):
             'accepted_family_name',
             'color_hex',
         ] + ContentSerializer.Meta.fields
+
+class PlantPreviewSerializer(PlantSerializer):
+    class Meta(PlantSerializer.Meta):
+        model = Plant
+        fields = [
+            'id',
+            'content_id',
+            'accepted_taxon_name',
+            'accepted_family_name',
+            'color_hex',
+        ]

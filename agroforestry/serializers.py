@@ -9,6 +9,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses>.
 
+
 from django.apps import apps
 from django.contrib.gis.geos import GEOSGeometry
 from django.db import transaction
@@ -16,17 +17,19 @@ from django.db.models import Q
 from django.db.models.functions import Now
 from py_mini_racer import MiniRacer
 from jsonschema import FormatChecker, validate
-from rest_framework.serializers import BooleanField, CharField, ChoiceField, DateTimeField, IntegerField, JSONField, ModelSerializer, Serializer, SerializerMethodField, ValidationError
+from rest_framework.serializers import BooleanField, CharField, ChoiceField, DateTimeField, DecimalField, IntegerField, JSONField, ModelSerializer, Serializer, SerializerMethodField, ValidationError
 from rest_framework_gis.fields import GeometryField
 from catalog.models import InvasionRiskRegion
-from catalog.serializers.models import PlantSerializer
+from catalog.serializers.models import PlantPreviewSerializer, PlantSerializer
 from core.serializers import UserPreviewSerializer
-from core.models import Text
+from core.models import Content, Text
+from core.utils import full_name
 from geography.models import Biome, Country, Municipality, State, VegetationArea
 from geography.serializers import BiomeSerializer, CountrySerializer, MunicipalitySerializer, StateSerializer, VegetationTypeSerializer
-from agroforestry.models import Farm, Field, Function, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
-from agroforestry.utils import none_if_empty, none_if_nan
+from agroforestry.models import CroppingPattern, CroppingPatternCrop, CroppingPatternRow, Farm, Field, Function, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
+from agroforestry.utils import hash_object, none_if_empty, none_if_nan
 from typing import List, Union
+import hashlib
 import json
 
 class FunctionSerializer(ModelSerializer):
@@ -185,7 +188,6 @@ class SiteTraitSerializer(ModelSerializer):
 
 class SiteTraitValueSerializer(ModelSerializer):
     # both
-    value = CharField()
     trait_id = IntegerField()
     # read
     trait_slug = CharField(read_only=True, source='trait.name')
@@ -280,7 +282,7 @@ class DetachedSiteTraitValueSerializer(SiteTraitValueSerializer):
             trait_id=trait.id,
         )
         if active_trait_value:
-            raise ValidationError({'non_field_value': f"Já existe um valor do traço '{trait.name_text.pt_br}' (trait_id: {trait.id}) para esse local (site_id: {self.site.id})."})
+            raise ValidationError({'non_field_errors': f"Já existe um valor do traço '{trait.name_text.pt_br}' (trait_id: {trait.id}) para esse local (site_id: {self.site.id})."})
         
         return super().validate(data)
 
@@ -327,12 +329,6 @@ class DetachedSiteTraitValueSerializer(SiteTraitValueSerializer):
 
 
 class SiteSerializer(ModelSerializer):
-    # both
-    location = GeometryField(required=False, source='site.location')
-    polygon = GeometryField(required=False, source='site.polygon')
-    trait_values = SiteTraitValueSerializer(many=True, source='site.trait_values')
-    # write
-    municipality_id = IntegerField(write_only=True, allow_null=True, required=False)
     # read
     area_m2 = SerializerMethodField()
     country = CountrySerializer(read_only=True, source='site.country')
@@ -341,6 +337,12 @@ class SiteSerializer(ModelSerializer):
     biome = BiomeSerializer(read_only=True, source='site.biome')
     vegetation_type = VegetationTypeSerializer(read_only=True, source='site.vegetation_type')
     created_at = DateTimeField(read_only=True, source='site.created_at')
+    # write
+    municipality_id = IntegerField(write_only=True, allow_null=True, required=False)
+    # both
+    location = GeometryField(required=False, source='site.location')
+    polygon = GeometryField(required=False, source='site.polygon')
+    trait_values = SiteTraitValueSerializer(many=True, source='site.trait_values')
     
     def __init__(self,  *args, **kwargs):
         self.site_type = kwargs.pop('site_type')
@@ -348,7 +350,7 @@ class SiteSerializer(ModelSerializer):
         super().__init__(*args, **kwargs)
 
     def get_area_m2(self, obj):
-        if obj.area:
+        if hasattr(obj, "area"):
             return round(obj.area.sq_m)
         
         return None
@@ -398,7 +400,10 @@ class SiteSerializer(ModelSerializer):
         country = Country.objects.filter(area__contains=data['location']).first()
         if not country:
             raise ValidationError({
-                'non_field_errors': 'As coordenadas passadas em location ou polygon não correspondem a terra firme. Certifique-se de utilizar o CRS WGS 84 (SRID 4326).'
+                'non_field_errors': (
+                    'As coordenadas passadas em location ou polygon não correspondem a terra firme.'
+                    'Certifique-se de utilizar o CRS WGS 84 (SRID 4326).'
+                )
             })
         
         state = State.objects.filter(country_id=country.id, area__contains=data['location']).first()
@@ -538,13 +543,11 @@ class SiteSerializer(ModelSerializer):
         ]
 
 class FarmSerializer(SiteSerializer):
-    # both
-    name = CharField()
-    # write
-    user_id = IntegerField(write_only=True)
     # read
     site_id = IntegerField(read_only=True)
     user = UserPreviewSerializer(read_only=True)
+    # write
+    user_id = IntegerField(write_only=True)
 
     def __init__(self,  *args, **kwargs):
         kwargs['site_type'] = "farm"
@@ -599,15 +602,231 @@ class FarmSerializer(SiteSerializer):
             'user',
         ] + SiteSerializer.Meta.fields
 
-class FieldSerializer(SiteSerializer):
-    # both
-    name = CharField()
-    farm_id = IntegerField()
+class CroppingPatternCropSerializer(ModelSerializer):
+    # read
+    plant = PlantPreviewSerializer(read_only=True)
     # write
-    user_id = IntegerField(write_only=True)
+    plant_id = IntegerField(write_only=True)
+    # both
+    distance_to_next_crop_m = DecimalField(max_digits=5, decimal_places=2, coerce_to_string=False)
+
+    def validate(self, data):
+        if data['distance_to_next_crop_m'] <= 0:
+            raise ValidationError({'distance_to_next_crop_m': 'Todo espaçamento entre plantas na mesma linha deve ser maior do que 0.'})
+        
+        return data
+
+    class Meta:
+        model = CroppingPatternCrop
+        fields = [
+            'plant',
+            'plant_id',
+            'distance_to_next_crop_m',
+        ]
+    
+class CroppingPatternRowSerializer(ModelSerializer):
+    # read
+    purpose = CharField(read_only=True, source='purpose.text.pt_br')
+    # write
+    purpose_id = IntegerField(write_only=True, required=False)
+    # both
+    crops = CroppingPatternCropSerializer(many=True, source='row_crops')
+    distance_to_next_row_m = DecimalField(max_digits=5, decimal_places=2, coerce_to_string=False)
+
+    def validate(self, data):
+        if data['distance_to_next_row_m'] <= 0:
+            raise ValidationError({'distance_to_next_row_m': 'Todo espaçamento entre linhas deve ser maior do que 0.'})
+        
+        return data
+        
+    @staticmethod
+    def create(pattern_id, row_data, row_position):
+        pattern_row = CroppingPatternRow.objects.create(
+            **dict(
+                position = row_position,
+                pattern_id = pattern_id,
+                purpose_id = row_data.get('purpose_id'),
+                distance_to_next_row_m = row_data['distance_to_next_row_m'],
+            )
+        )
+
+        crops = [
+            CroppingPatternCrop(
+                **dict(
+                    **crop,
+                    position = j+1,
+                    pattern_id = pattern_id,
+                    pattern_row_id = pattern_row.id,
+                )
+            ) for j, crop in enumerate(row_data['row_crops'])
+        ]
+        CroppingPatternCrop.objects.bulk_create(crops)
+
+    class Meta:
+        model = CroppingPatternRow
+        fields = [
+            'purpose',
+            'purpose_id',
+            'distance_to_next_row_m',
+            'crops',
+        ]
+
+class CroppingPatternParamsSerializer(Serializer):
+    with_rows = BooleanField(required=False, allow_null=False, default=True)
+    pattern_is_public = BooleanField(required=False, allow_null=False, source='is_public')
+    pattern_author_id = IntegerField(required=False, allow_null=False, source='author_id')
+
+class CroppingPatternSerializer(ModelSerializer):
+    # read
+    author = UserPreviewSerializer(read_only=True)
+    # write
+    author_id = IntegerField(write_only=True)
+    # both
+    is_public = BooleanField(required=False)
+
+    def __init__(self,  *args, **kwargs):
+        params = kwargs.pop('params', {})
+        if params.get('with_rows'):
+            self.fields['rows'] = CroppingPatternRowSerializer(many=True, source='pattern_rows')
+
+        super().__init__(*args, **kwargs)
+
+    def publish(self, validated_data):
+        content = Content.objects.create(
+            status = 'accepted',
+            type = 'cropping_pattern',
+            proposer_id = validated_data.get('author_id'),
+        )
+
+        return content
+
+    def retract(self, pattern, validated_data):
+        pattern.public_content.update(
+            rejector_id = validated_data['author_id'],
+            rejected_at = Now(),
+        )
+
+    def validate(self, data):
+        self.rows_hash = hash_object(data['pattern_rows'])
+        instance_id = self.instance.id if self.instance else 0
+
+        if instance_id:
+            pattern = CroppingPattern.objects.get(id=instance_id)
+            pattern_dependent_fields = pattern.pattern_fields.filter(~Q(user_id=data['author_id']))
+            if pattern_dependent_fields.count() > 0:
+                raise ValidationError({
+                    'non_field_errors': (
+                        'O padrão não pode ser alterado enquanto está sendo utilizado por outros usuários. '
+                        'Tente copiar as mudanças que deseja para um novo padrão.'
+                    )
+                })
+            
+        homonym_pattern = CroppingPattern.objects.active().filter(
+            ~Q(id=instance_id),
+            author_id=data['author_id'],
+            name=data['name'],
+        )
+        if homonym_pattern:
+            raise ValidationError({
+                'name': f'O nome {data["name"]} já está sendo usado para outro padrão criado por você.'
+            })
+
+        twin_public_pattern = CroppingPattern.objects.active().public().filter(
+            ~Q(id=instance_id),
+            rows_hash=self.rows_hash,
+            public_content__status='accepted',
+        ).first()
+        if twin_public_pattern:
+            raise ValidationError({
+                'rows': (
+                    'Uma configuração idêntica já consta em outro padrão publicado: ' 
+                    f'"{twin_public_pattern.name}", por {full_name(twin_public_pattern.author)}.'
+                )
+            })
+
+        return data
+
+    def create(self, validated_data):
+        with transaction.atomic():
+            content_id = None
+            is_public = validated_data.get('is_public', True)
+            if is_public:
+                content = self.publish(validated_data)
+                content_id = content.id
+
+            pattern = CroppingPattern.objects.create(
+                name = validated_data['name'],
+                description = validated_data['description'],
+                author_id = validated_data['author_id'],
+                source_pattern_id = validated_data.get('source_pattern_id'),
+                rows_hash = self.rows_hash,
+                is_public = is_public,
+                public_content_id = content_id,
+            )
+
+            for i, row_data in enumerate(validated_data['pattern_rows']):
+                CroppingPatternRowSerializer.create(pattern.id, row_data, i+1)
+
+            return pattern
+
+    def update(self, pattern, validated_data):
+        with transaction.atomic():
+            content_id = pattern.public_content_id
+
+            is_public = validated_data.get('is_public', True)
+            if is_public and not pattern.is_public:
+                content = self.publish(validated_data)
+                content_id = content.id
+            elif not is_public and pattern.is_public:
+                self.retract(pattern, validated_data)
+
+            if pattern.rows_hash != self.rows_hash:
+                pattern.pattern_crops.all().delete()
+                pattern.pattern_rows.all().delete()
+
+                for i, row_data in enumerate(validated_data['pattern_rows']):
+                    CroppingPatternRowSerializer.create(pattern.id, row_data, i+1)
+
+            pattern.name = validated_data['name']
+            pattern.description = validated_data['description']
+            pattern.author_id = validated_data['author_id']
+            pattern.rows_hash = self.rows_hash
+            pattern.is_public = is_public
+            pattern.public_content_id = content_id
+            pattern.updated_at = Now()
+            pattern.save()
+
+            return pattern
+
+    class Meta:
+        model = CroppingPattern
+        fields = [
+            'id',
+            'name',
+            'description',
+            'is_public',
+            'source_pattern_id',
+            'author',
+            'author_id',
+        ]
+
+class FieldSerializer(SiteSerializer):
     # read
     site_id = IntegerField(read_only=True)
     user = UserPreviewSerializer(read_only=True)
+    # write
+    user_id = IntegerField(write_only=True)
+    # both
+    farm_id = IntegerField()
+    cropping_pattern_id = IntegerField(required=False, allow_null=True)
+    rows_offset_m = DecimalField(required=False, allow_null=True, max_digits=6, decimal_places=2)
+    crops_offset_m = DecimalField(required=False, allow_null=True, max_digits=6, decimal_places=2)
+
+    CROPPING_FIELDS = [
+        'cropping_pattern_id',
+        'rows_angle_deg',
+        'rows_offset_m',
+    ]
 
     def __init__(self,  *args, **kwargs):
         kwargs['site_type'] = "field"
@@ -630,8 +849,18 @@ class FieldSerializer(SiteSerializer):
         if homonym_field:
             raise ValidationError({'name': f'O nome "{data["name"]}" já está sendo utilizado para outra área na mesma propriedade.'})
 
-        if 'polygon' not in data:
+        if not data.get('polygon'):
             raise ValidationError({'polygon': 'Campo obrigatório.'})
+        
+        passed_cropping_fields = [ f for f in data.keys() if f in self.CROPPING_FIELDS and data.get(f) != None ]
+        if len(passed_cropping_fields) > 0 and len(passed_cropping_fields) < len(self.CROPPING_FIELDS):
+            raise ValidationError({
+                'non_field_errors': (
+                    'Configuração de cultivo presente, mas incompleta. '
+                    'Se passar um dos seguintes campos, certifique-se de passar todos: '
+                    f'{self.CROPPING_FIELDS}'
+                )
+            })
         
         return super().validate(data)
 
@@ -644,6 +873,10 @@ class FieldSerializer(SiteSerializer):
                 name = validated_data['name'],
                 farm_id = validated_data['farm_id'],
                 user_id = validated_data['user_id'],
+                rows_angle_deg = validated_data.get('rows_angle_deg'),
+                rows_offset_m = validated_data.get('rows_offset_m'),
+                crops_offset_m = validated_data.get('crops_offset_m'),
+                cropping_pattern_id = validated_data.get('cropping_pattern_id'),
             )
 
     def update(self, field, validated_data):
@@ -652,7 +885,10 @@ class FieldSerializer(SiteSerializer):
 
             field.name = validated_data['name']
             field.farm_id = validated_data['farm_id']
-            field.user_id = validated_data['user_id']
+            field.rows_angle_deg = validated_data.get('rows_angle_deg')
+            field.rows_offset_m = validated_data.get('rows_offset_m')
+            field.crops_offset_m = validated_data.get('crops_offset_m')
+            field.cropping_pattern_id = validated_data.get('cropping_pattern_id')
             field.save()
             
             return field
@@ -666,8 +902,11 @@ class FieldSerializer(SiteSerializer):
             'name',
             'user_id',
             'user',
+            'rows_angle_deg',
+            'rows_offset_m',
+            'crops_offset_m',
+            'cropping_pattern_id',
             # 'cropping_summary',
             # 'cropping_geometry',
-            # 'cropping_pattern',
             # 'cropping_rule_set',
         ] + SiteSerializer.Meta.fields

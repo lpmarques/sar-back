@@ -47,10 +47,39 @@ class FarmQuerySet(SiteQuerySet):
             'user',
         )
     
-class FieldQuerySet(SiteQuerySet):
+class FieldQuerySet(SiteQuerySet):    
     def denormalized(self):
         return super().denormalized().select_related(
             'user',
+        )
+    
+class CroppingPatternQuerySet(QuerySet):
+    def active(self):
+        return self.filter(deleted_at=None)
+    
+    def public(self):
+        return self.filter(is_public=True)
+    
+    def private(self, author_id: int):
+        return self.filter(is_public=False, author_id=author_id)
+
+    def denormalized(self):
+        return self.select_related(
+            'author',
+        ).prefetch_related(
+            Prefetch(
+                'pattern_rows',
+                queryset=apps.get_model('agroforestry', 'CroppingPatternRow').objects.select_related(
+                    'purpose',
+                    'purpose__text',
+                ).order_by('position')
+            ),
+            Prefetch(
+                'pattern_rows__row_crops',
+                queryset=apps.get_model('agroforestry', 'CroppingPatternCrop').objects.select_related(
+                    'plant',
+                ).order_by('position')
+            )
         )
 
 class SiteTraitQuerySet(QuerySet):

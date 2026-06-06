@@ -9,9 +9,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses>.
 
+from decimal import Decimal
+import hashlib
 import json
 import numpy as np
 from typing import Union
+from core.models import User
 
 def none_if_empty(value: str):
     value = value.strip()
@@ -31,3 +34,13 @@ def json_to_dict(json_str: Union[str, None]):
         return None
 
     return json.loads(json_str)
+
+def hash_object(obj):
+    def decimal_serializer(obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        raise TypeError(f"Type {type(obj)} not serializable")
+
+    encoded = json.dumps(obj, sort_keys=True, default=decimal_serializer).encode()
+    
+    return hashlib.sha256(encoded).hexdigest()
