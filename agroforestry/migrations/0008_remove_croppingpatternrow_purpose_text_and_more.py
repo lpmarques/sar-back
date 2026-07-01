@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
                 ('text', models.OneToOneField(db_comment='[diversidade, preenchimento, anuais, cobertura, outra]', on_delete=django.db.models.deletion.DO_NOTHING, to='core.text')),
             ],
             options={
-                'db_table': '"agroforestry"."cropping_row_purpose"',
+                'db_table': '"agroforestry"."cropping_row_purposes"',
                 'managed': True,
             },
         ),

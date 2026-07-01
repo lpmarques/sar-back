@@ -51,6 +51,7 @@ class FieldQuerySet(SiteQuerySet):
     def denormalized(self):
         return super().denormalized().select_related(
             'user',
+            'cropping',
         )
     
 class CroppingPatternQuerySet(QuerySet):
@@ -72,13 +73,14 @@ class CroppingPatternQuerySet(QuerySet):
                 queryset=apps.get_model('agroforestry', 'CroppingPatternRow').objects.select_related(
                     'purpose',
                     'purpose__text',
-                ).order_by('position')
-            ),
+                )
+            )
+        ).prefetch_related(
             Prefetch(
                 'pattern_rows__row_crops',
                 queryset=apps.get_model('agroforestry', 'CroppingPatternCrop').objects.select_related(
                     'plant',
-                ).order_by('position')
+                )
             )
         )
 
