@@ -9,7 +9,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses>.
 
-
 from django.apps import apps
 from django.contrib.gis.geos import GEOSGeometry
 from django.db import transaction
@@ -29,7 +28,6 @@ from geography.serializers import BiomeSerializer, CountrySerializer, Municipali
 from agroforestry.models import Cropping, CroppingPattern, CroppingPatternCrop, CroppingPatternRow, Farm, Field, Function, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
 from agroforestry.utils import hash_object, none_if_empty, none_if_nan
 from typing import List, Union
-import hashlib
 import json
 
 class FunctionSerializer(ModelSerializer):
@@ -364,7 +362,7 @@ class SiteSerializer(ModelSerializer):
         return GEOSGeometry(rep)
     
     def to_internal_value(self, data):
-        # traits and texts data must be recovered after nested serializer processing
+        # traits and texts data must be recovered AFTER nested serializer processing
         if data.get('trait_values'):
             self.traits = [
                 SiteTrait.objects.denormalized().get(id=trait_value.get('trait_id')) for trait_value in data['trait_values']
@@ -908,6 +906,7 @@ class FieldSerializer(SiteSerializer):
                     field.cropping.save()
                 else:
                     field.cropping.delete()
+                    field.cropping = None
             elif validated_data.get('cropping'):
                 field.cropping = Cropping.objects.create(
                     pattern_id = validated_data['cropping']['pattern_id'],

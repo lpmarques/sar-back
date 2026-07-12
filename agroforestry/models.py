@@ -192,7 +192,7 @@ class Site(models.Model):
 
     type = models.CharField(choices=TYPE.choices)
     location = models.PointField()
-    polygon = models.GeometryField(geography=True, blank=True, null=True)
+    polygon = models.PolygonField(geography=True, srid=4326, blank=True, null=True)
     country = models.ForeignKey(Country, models.DO_NOTHING)
     state = models.ForeignKey(State, models.DO_NOTHING, blank=True, null=True)
     municipality = models.ForeignKey(Municipality, models.DO_NOTHING, blank=True, null=True)

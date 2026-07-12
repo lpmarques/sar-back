@@ -10,14 +10,12 @@
 # along with this program. If not, see <https://www.gnu.org/licenses>.
 
 from typing import List
-from django.db import connection, transaction
+from django.db import transaction
 from django.db.models.functions import Now
 from rest_framework.exceptions import NotFound, PermissionDenied
-from agroforestry.models import CroppingPattern, CroppingPatternCrop, CroppingPatternRow, Farm, Field, Site, SiteTrait, SiteTraitValue
+from agroforestry.models import CroppingPattern, Farm, Field, Site, SiteTraitValue
 from agroforestry.queries import PlantsFitnessQuery
 from agroforestry.utils import json_to_dict
-from core.models import Text
-import pandas as pd
 
 def get_site_owner_id(site: Site):
     if site.TYPE.FRM:

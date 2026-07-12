@@ -10,17 +10,14 @@
 # along with this program. If not, see <https://www.gnu.org/licenses>.
 
 from abc import ABC
-
-from django.apps import apps
-from django.db.models import Prefetch, Q
 from django.db.models.functions import Now
 from rest_framework import status
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
-from agroforestry.models import CroppingPattern, Farm, Field, PlantSiteFitting, Site, SiteTrait, SiteTraitValue
-from agroforestry.serializers import CroppingPatternParamsSerializer, CroppingPatternSerializer, DetachedSiteTraitValueSerializer, FarmSerializer, FieldSerializer, SitePlantFitnessSerializer, SiteTraitSerializer, SiteTraitValueSerializer
+from agroforestry.models import CroppingPattern, Farm, Field, SiteTrait, SiteTraitValue
+from agroforestry.serializers import CroppingPatternParamsSerializer, CroppingPatternSerializer, DetachedSiteTraitValueSerializer, FarmSerializer, FieldSerializer, SitePlantFitnessSerializer, SiteTraitSerializer
 from agroforestry.services import delete_cropping_pattern, delete_farm, delete_field, get_cropping_pattern, get_farm, get_field, get_site, get_site_plants_fitness_data, get_trait_value
 from catalog.services import get_plant
 
@@ -64,8 +61,11 @@ class FarmView(APIView):
             farm = get_farm(farm_id, request.user.id, queryset=Farm.objects.denormalized())
         except APIException as err:
             return Response({'msg': err.detail}, status=err.status_code)
+        
+        data = request.data
+        data.update({'user_id': request.user.id})
 
-        serializer = FarmSerializer(farm, data=request.data)
+        serializer = FarmSerializer(farm, data=data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

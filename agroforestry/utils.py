@@ -14,7 +14,6 @@ import hashlib
 import json
 import numpy as np
 from typing import Union
-from core.models import User
 
 def none_if_empty(value: str):
     value = value.strip()
