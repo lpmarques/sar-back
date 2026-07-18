@@ -658,12 +658,16 @@ class PlantCreationSerializer(ContentSerializer):
             # create plant
             content = super().create(validated_data)
 
+            accepted_taxon_name = PlantSerializer.build_accepted_taxon_name(validated_data['taxon'])
+
             plant = Plant.objects.create(
                 content_id = content.id,
-                accepted_taxon_name = None,
-                accepted_family_name = None,
-                color_hex = validated_data.get('color_hex'),
+                accepted_taxon_name = accepted_taxon_name,
+                accepted_family_name = validated_data['taxon']['family'],
+                main_popular_name = validated_data['popular_name'],
+                color_hex = md5_to_color(string_to_md5(accepted_taxon_name)),
             )
+            plant.save()
 
             # create taxon
             taxon_serializer = TaxonSerializer(data=dict(validated_data['taxon'], **{
@@ -672,7 +676,7 @@ class PlantCreationSerializer(ContentSerializer):
                 'plant_id': plant.id,
             }))
             if taxon_serializer.is_valid(raise_exception=True):
-                taxon = taxon_serializer.save()
+                taxon_serializer.save()
 
             # create popular_name
             popular_name_serializer = PopularNameSerializer(data=dict(validated_data['popular_name'], **{
@@ -680,15 +684,7 @@ class PlantCreationSerializer(ContentSerializer):
                 'plant_id': plant.id,
             }))
             if popular_name_serializer.is_valid(raise_exception=True):
-                popular_name = popular_name_serializer.save()
-
-            # update plant with taxonomic data
-            accepted_taxon_name = PlantSerializer.build_accepted_taxon_name(taxon)
-
-            plant.accepted_taxon_name = accepted_taxon_name
-            plant.accepted_family_name = taxon.family
-            plant.color_hex = md5_to_color(string_to_md5(accepted_taxon_name))
-            plant.save()
+                popular_name_serializer.save()
 
             # TODO: buscar nome compatível na invasion_risk_regions e criar FK se encontrar match
 
@@ -708,14 +704,20 @@ class PlantSerializer(ContentSerializer):
     # both
     accepted_taxon_name = CharField(required=False)
     accepted_family_name = CharField(required=False)
+    main_popular_name = CharField(required=False)
     color_hex = CharField(required=False)
 
     @staticmethod
-    def build_accepted_taxon_name(taxon: Taxon):
+    def build_accepted_taxon_name(taxon: Taxon | dict):
+        if isinstance(taxon, Taxon):
+            species, subspecies, variety = taxon.species, taxon.subspecies, taxon.variety
+        else:
+            species, subspecies, variety = taxon['species'], taxon['subspecies'], taxon['variety']
+
         return (
-            f"{taxon.species}" +
-            (f" subsp. {taxon.subspecies}" if taxon.subspecies else "") +
-            (f" var. {taxon.variety}" if taxon.variety else "")
+            f"{species}" +
+            (f" subsp. {subspecies}" if subspecies else "") +
+            (f" var. {variety}" if variety else "")
         )
 
     def __init__(self,  *args, **kwargs):
@@ -740,6 +742,7 @@ class PlantSerializer(ContentSerializer):
             'content_id',
             'accepted_taxon_name',
             'accepted_family_name',
+            'main_popular_name',
             'color_hex',
         ] + ContentSerializer.Meta.fields
 
@@ -751,5 +754,6 @@ class PlantPreviewSerializer(PlantSerializer):
             'content_id',
             'accepted_taxon_name',
             'accepted_family_name',
+            'main_popular_name',
             'color_hex',
         ]

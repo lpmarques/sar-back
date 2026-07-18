@@ -714,7 +714,6 @@ class CroppingPatternSerializer(ModelSerializer):
         )
 
     def validate(self, data):
-        import pdb; pdb.set_trace()
         self.rows_hash = hash_object(data['pattern_rows'])
         instance_id = self.instance.id if self.instance else 0
 

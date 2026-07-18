@@ -268,4 +268,4 @@ class SiteTraitValueText(models.Model):
     class Meta:
         managed = True
         db_table = '"agroforestry"."site_trait_value_texts"'
-            
+    
