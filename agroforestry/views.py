@@ -16,8 +16,8 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
-from agroforestry.models import CroppingPattern, Farm, Field, SiteTrait, SiteTraitValue
-from agroforestry.serializers import CroppingPatternParamsSerializer, CroppingPatternSerializer, DetachedSiteTraitValueSerializer, FarmSerializer, FieldSerializer, SitePlantFitnessSerializer, SiteTraitSerializer
+from agroforestry.models import CroppingPattern, CroppingRowPurpose, Farm, Field, SiteTrait, SiteTraitValue
+from agroforestry.serializers import CroppingPatternParamsSerializer, CroppingPatternSerializer, CroppingRowPurposeSerializer, DetachedSiteTraitValueSerializer, FarmSerializer, FieldSerializer, SitePlantFitnessSerializer, SiteTraitSerializer
 from agroforestry.services import delete_cropping_pattern, delete_farm, delete_field, get_cropping_pattern, get_farm, get_field, get_site, get_site_plants_fitness_data, get_trait_value
 from catalog.services import get_plant
 
@@ -345,6 +345,16 @@ class FieldTraitValueListView(SiteTraitValueListView):
             return Response({'msg': err.detail}, status=err.status_code)
         
         return super().get(request, field.site_id)
+
+class CroppingRowPurposeListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        cropping_row_purposes = CroppingRowPurpose.objects.active().denormalized()
+        serializer = CroppingRowPurposeSerializer(cropping_row_purposes, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class CroppingPatternView(APIView):
     permission_classes = [IsAuthenticated]

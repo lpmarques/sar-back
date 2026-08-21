@@ -84,6 +84,15 @@ class CroppingPatternQuerySet(QuerySet):
             )
         )
 
+class CroppingRowPurposeQuerySet(QuerySet):
+    def active(self):
+        return self.filter(deleted_at=None)
+
+    def denormalized(self):
+        return self.select_related(
+            'text',
+        )
+
 class SiteTraitQuerySet(QuerySet):
     def denormalized(self):
         return self.select_related(

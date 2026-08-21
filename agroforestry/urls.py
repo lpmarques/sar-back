@@ -27,4 +27,5 @@ urlpatterns = [
     path('fields/<int:field_id>/site-trait-values', views.FieldTraitValueListView.as_view()),
     path('cropping-patterns', views.CroppingPattenListView.as_view()),
     path('cropping-patterns/<int:pattern_id>', views.CroppingPatternView.as_view()),
+    path('cropping-row-purposes', views.CroppingRowPurposeListView.as_view()),
 ]

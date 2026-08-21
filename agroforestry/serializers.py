@@ -16,7 +16,7 @@ from django.db.models import Q
 from django.db.models.functions import Now
 from py_mini_racer import MiniRacer
 from jsonschema import FormatChecker, validate
-from rest_framework.serializers import BooleanField, CharField, ChoiceField, DateTimeField, DecimalField, IntegerField, JSONField, ModelSerializer, Serializer, SerializerMethodField, ValidationError
+from rest_framework.serializers import BooleanField, CharField, ChoiceField, DateTimeField, DecimalField, IntegerField, JSONField, ModelSerializer, Serializer, SerializerMethodField, SlugRelatedField, ValidationError
 from rest_framework_gis.fields import GeometryField
 from catalog.models import InvasionRiskRegion
 from catalog.serializers.models import PlantPreviewSerializer, PlantSerializer
@@ -25,7 +25,7 @@ from core.models import Content, Text
 from core.utils import full_name
 from geography.models import Biome, Country, Municipality, State, VegetationArea
 from geography.serializers import BiomeSerializer, CountrySerializer, MunicipalitySerializer, StateSerializer, VegetationTypeSerializer
-from agroforestry.models import Cropping, CroppingPattern, CroppingPatternCrop, CroppingPatternRow, Farm, Field, Function, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
+from agroforestry.models import Cropping, CroppingPattern, CroppingPatternCrop, CroppingPatternRow, CroppingRowPurpose, Farm, Field, Function, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
 from agroforestry.utils import hash_object, none_if_empty, none_if_nan
 from typing import List, Union
 import json
@@ -49,6 +49,16 @@ class SiteTraitTextValueOptionSerializer(ModelSerializer):
         fields = [
             'value',
             'description',
+        ]
+
+class CroppingRowPurposeSerializer(ModelSerializer):
+    name = SlugRelatedField(read_only=True, source='text', slug_field='pt_br')
+
+    class Meta:
+        model = CroppingRowPurpose
+        fields = [
+            'id',
+            'name',
         ]
         
 class TraitsFitnessSerializer(Serializer):
@@ -602,6 +612,7 @@ class FarmSerializer(SiteSerializer):
 
 class CroppingPatternCropSerializer(ModelSerializer):
     # read
+    position = IntegerField(read_only=True)
     plant = PlantPreviewSerializer(read_only=True)
     # write
     plant_id = IntegerField(write_only=True)
@@ -625,6 +636,7 @@ class CroppingPatternCropSerializer(ModelSerializer):
     
 class CroppingPatternRowSerializer(ModelSerializer):
     # read
+    position = IntegerField(read_only=True)
     purpose = CharField(read_only=True, source='purpose.text.pt_br')
     # write
     purpose_id = IntegerField(write_only=True, required=False)
@@ -719,7 +731,7 @@ class CroppingPatternSerializer(ModelSerializer):
 
         if instance_id:
             pattern = CroppingPattern.objects.get(id=instance_id)
-            pattern_dependent_fields = pattern.pattern_fields.filter(~Q(user_id=data['author_id']))
+            pattern_dependent_fields = pattern.pattern_fields.filter(~Q(field__user_id=data['author_id']))
             if pattern_dependent_fields.count() > 0:
                 raise ValidationError({
                     'non_field_errors': (

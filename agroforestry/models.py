@@ -14,7 +14,7 @@ from django.db.models.functions import Now
 from catalog.models import Plant, Trait
 from core.models import Content, Text, User
 from geography.models import Biome, Country, Municipality, State, VegetationType
-from agroforestry.querysets import CroppingPatternQuerySet, FarmQuerySet, FieldQuerySet, SiteTraitQuerySet, SiteTraitValueQuerySet
+from agroforestry.querysets import CroppingPatternQuerySet, CroppingRowPurposeQuerySet, FarmQuerySet, FieldQuerySet, SiteTraitQuerySet, SiteTraitValueQuerySet
 
 class Cropping(models.Model):
     rows_angle_deg = models.SmallIntegerField()
@@ -88,6 +88,8 @@ class CroppingRowPurpose(models.Model):
     text = models.OneToOneField(Text, models.DO_NOTHING, db_comment='[diversidade, preenchimento, anuais, cobertura, outra]')
     created_at = models.DateTimeField(db_default=Now())
     deleted_at = models.DateTimeField(blank=True, null=True)
+
+    objects = CroppingRowPurposeQuerySet().as_manager()
 
     class Meta:
         managed = True

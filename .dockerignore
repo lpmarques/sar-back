@@ -1,6 +1,8 @@
 __pycache__/
+*.json
 *.py[cod]
 *.sh
 *.sql
 .env*
+.git*
 venv
