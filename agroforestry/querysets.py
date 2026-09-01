@@ -10,8 +10,9 @@
 # along with this program. If not, see <https://www.gnu.org/licenses>.
 
 from django.apps import apps
+from django.contrib.gis.db import models
 from django.contrib.gis.db.models.functions import Area
-from django.db.models import QuerySet, Prefetch
+from django.db.models import Count, QuerySet, Prefetch
 
 class SiteQuerySet(QuerySet):
     def active(self):
@@ -57,12 +58,21 @@ class FieldQuerySet(SiteQuerySet):
 class CroppingPatternQuerySet(QuerySet):
     def active(self):
         return self.filter(deleted_at=None)
-    
+
     def public(self):
         return self.filter(is_public=True)
-    
+
     def private(self, author_id: int):
         return self.filter(is_public=False, author_id=author_id)
+
+    def with_user_count(self):
+        return self.annotate(
+            users_count=Count(
+                'pattern_croppings__field__user_id',
+                filter=~models.Q(pattern_croppings__field__user_id=models.F('author_id')),
+                distinct=True,
+            )
+        )
 
     def denormalized(self):
         return self.select_related(

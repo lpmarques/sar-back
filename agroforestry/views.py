@@ -360,18 +360,22 @@ class CroppingPatternView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return CroppingPattern.objects.denormalized()
+        params = CroppingPatternParamsSerializer(self.request.query_params).data
+
+        queryset = CroppingPattern.objects.denormalized()
+        if params.get('with_user_count'):
+            queryset = queryset.with_user_count()
+
+        return queryset
     
     def get(self, request, pattern_id):
         try:
-            pattern = get_cropping_pattern(pattern_id, request.user.id)
+            pattern = get_cropping_pattern(pattern_id, request.user.id, queryset=self.get_queryset())
         except APIException as err:
             return Response({'msg': err.detail}, status=err.status_code)
 
-        serializer = CroppingPatternSerializer(
-            pattern,
-            params=CroppingPatternParamsSerializer(request.query_params).data
-        )
+        params = CroppingPatternParamsSerializer(request.query_params).data
+        serializer = CroppingPatternSerializer(pattern, params=params)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -427,7 +431,7 @@ class CroppingPatternView(APIView):
             return Response({'msg': err.detail}, status=err.status_code)
         
         try:
-            delete_cropping_pattern(pattern)
+            delete_cropping_pattern(pattern, request.user.id)
         except Exception as err:
             return Response({'msg': err.args[0]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

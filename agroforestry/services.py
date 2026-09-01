@@ -11,6 +11,7 @@
 
 from typing import List
 from django.db import transaction
+from django.db.models import Q
 from django.db.models.functions import Now
 from rest_framework.exceptions import NotFound, PermissionDenied
 from agroforestry.models import CroppingPattern, Farm, Field, Site, SiteTraitValue
@@ -109,24 +110,43 @@ def get_site_plants_fitness_data(site_id: int, plant_id: int=None):
 
     return [df[plant_ids == pid] for pid in plant_ids.unique()]
 
-def get_cropping_pattern(pattern_id, user_id):
+def get_cropping_pattern(pattern_id, user_id, queryset=CroppingPattern.objects):
     try:
-        pattern = CroppingPattern.objects.get(id=pattern_id)
+        pattern = queryset.get(id=pattern_id)
     except CroppingPattern.DoesNotExist:
         raise NotFound('Padrão não encontrado.')
-    
+
     if pattern.deleted_at:
         raise NotFound('Padrão indisponível.')
-    
+
     if not pattern.is_public and pattern.author_id != user_id:
         raise PermissionDenied('Você não tem autorização para acessar esse padrão.')
-    
+
     return pattern
 
-def delete_cropping_pattern(pattern, delete_ts=Now()):    
+def get_pattern_dependent_croppings(pattern_id):
+    try:
+        croppings = CroppingPattern.objects.get(id=pattern_id).pattern_croppings
+    except CroppingPattern.DoesNotExist:
+        raise NotFound('Padrão não encontrado.')
+
+    return croppings
+
+def delete_cropping_pattern(pattern, user_id, delete_ts=Now()):
+    dependent_croppings = get_pattern_dependent_croppings(pattern.id)
+    not_owned_croppings = dependent_croppings.filter(~Q(field__user_id=user_id))
+    if not_owned_croppings.count() > 0:
+        raise PermissionDenied({
+            'non_field_errors': (
+                'O padrão não pode ser excluído enquanto está sendo utilizado por outros usuários. '
+                'Tente copiar as mudanças que deseja para um novo padrão.'
+            )
+        })
+
     with transaction.atomic():
         pattern.pattern_crops.update(deleted_at=delete_ts)
         pattern.pattern_rows.update(deleted_at=delete_ts)
+        dependent_croppings.update(pattern=None)
         
         pattern.deleted_at = delete_ts
         pattern.save()

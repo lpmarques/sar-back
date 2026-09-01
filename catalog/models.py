@@ -27,7 +27,7 @@ class Plant(models.Model):
 
     class Meta:
         managed = True
-        db_table = '"catalog"."plants"'
+        db_table = 'plants'
 
 
 class InvasionRiskRegion(models.Model):
@@ -48,7 +48,7 @@ class InvasionRiskRegion(models.Model):
 
     class Meta:
         managed = True
-        db_table = '"catalog"."invasion_risk_regions"'
+        db_table = 'invasion_risk_regions'
 
 
 class NaturalOccurrenceRegion(models.Model):
@@ -63,7 +63,7 @@ class NaturalOccurrenceRegion(models.Model):
 
     class Meta:
         managed = True
-        db_table = '"catalog"."natural_occurrence_regions"'
+        db_table = 'natural_occurrence_regions'
 
 
 class PopularName(models.Model):
@@ -75,7 +75,7 @@ class PopularName(models.Model):
 
     class Meta:
         managed = True
-        db_table = '"catalog"."popular_names"'
+        db_table = 'popular_names'
 
 
 class Taxon(models.Model):
@@ -96,7 +96,7 @@ class Taxon(models.Model):
 
     class Meta:
         managed = True
-        db_table = '"catalog"."taxa"'
+        db_table = 'taxa'
 
 
 class Trait(models.Model):
@@ -121,7 +121,7 @@ class Trait(models.Model):
 
     class Meta:
         managed = True
-        db_table = '"catalog"."traits"'
+        db_table = 'traits'
         unique_together = (('name_text', 'section_text'),)
 
 
@@ -135,7 +135,7 @@ class TraitTextValueOption(models.Model):
 
     class Meta:
         managed = True
-        db_table = '"catalog"."trait_text_value_options"'
+        db_table = 'trait_text_value_options'
 
 
 class TraitValue(models.Model):
@@ -150,7 +150,7 @@ class TraitValue(models.Model):
 
     class Meta:
         managed = True
-        db_table = '"catalog"."trait_values"'
+        db_table = 'trait_values'
 
 
 class TraitValueText(models.Model):
@@ -160,4 +160,4 @@ class TraitValueText(models.Model):
 
     class Meta:
         managed = True
-        db_table = '"catalog"."trait_values_texts"' # TODO: change this table name to trait_value_texts
+        db_table = 'trait_values_texts' # TODO: change this table name to trait_value_texts

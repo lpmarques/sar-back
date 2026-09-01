@@ -26,6 +26,7 @@ from core.utils import full_name
 from geography.models import Biome, Country, Municipality, State, VegetationArea
 from geography.serializers import BiomeSerializer, CountrySerializer, MunicipalitySerializer, StateSerializer, VegetationTypeSerializer
 from agroforestry.models import Cropping, CroppingPattern, CroppingPatternCrop, CroppingPatternRow, CroppingRowPurpose, Farm, Field, Function, Site, SiteTrait, SiteTraitTextValueOption, SiteTraitValue
+from agroforestry.services import get_cropping_pattern, get_pattern_dependent_croppings
 from agroforestry.utils import hash_object, none_if_empty, none_if_nan
 from typing import List, Union
 import json
@@ -639,7 +640,7 @@ class CroppingPatternRowSerializer(ModelSerializer):
     position = IntegerField(read_only=True)
     purpose = CharField(read_only=True, source='purpose.text.pt_br')
     # write
-    purpose_id = IntegerField(write_only=True, required=False)
+    purpose_id = IntegerField(write_only=True)
     # both
     distance_to_next_row_m = DecimalField(max_digits=5, decimal_places=2, coerce_to_string=False)
     crops_offset_m = DecimalField(max_digits=5, decimal_places=2, coerce_to_string=False)
@@ -648,6 +649,12 @@ class CroppingPatternRowSerializer(ModelSerializer):
     def validate(self, data):
         if data['distance_to_next_row_m'] <= 0:
             raise ValidationError({'distance_to_next_row_m': 'Todo espaçamento entre linhas deve ser maior do que 0.'})
+
+        if data['crops_offset_m'] < 0:
+            raise ValidationError({'crops_offset_m': 'Nenhum deslocamento de linha pode ser menor do que 0.'})
+
+        if len(data['row_crops']) == 0:
+            raise ValidationError({'crops': 'Todas as linhas devem conter pelo menos um cultivo.'})
         
         return data
         
@@ -688,6 +695,7 @@ class CroppingPatternRowSerializer(ModelSerializer):
 
 class CroppingPatternParamsSerializer(Serializer):
     with_rows = BooleanField(required=False, allow_null=False, default=True)
+    with_user_count = BooleanField(required=False, allow_null=False)
     pattern_is_public = BooleanField(required=False, allow_null=False, source='is_public')
     pattern_author_id = IntegerField(required=False, allow_null=False, source='author_id')
 
@@ -699,13 +707,23 @@ class CroppingPatternSerializer(ModelSerializer):
     author_id = IntegerField(write_only=True)
     # both
     is_public = BooleanField(required=False)
+    source_pattern_id = IntegerField(required=False)
 
     def __init__(self,  *args, **kwargs):
         params = kwargs.pop('params', {})
         if params.get('with_rows'):
             self.fields['rows'] = CroppingPatternRowSerializer(many=True, source='pattern_rows')
+        if params.get('with_user_count'):
+            self.fields['users_count'] = IntegerField(read_only=True)
 
         super().__init__(*args, **kwargs)
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        if 'users_count' in self.fields:
+            data['users_count'] = obj.users_count
+
+        return data
 
     def publish(self, validated_data):
         content = Content.objects.create(
@@ -730,13 +748,31 @@ class CroppingPatternSerializer(ModelSerializer):
         instance_id = self.instance.id if self.instance else 0
 
         if instance_id:
-            pattern = CroppingPattern.objects.get(id=instance_id)
-            pattern_dependent_fields = pattern.pattern_fields.filter(~Q(field__user_id=data['author_id']))
-            if pattern_dependent_fields.count() > 0:
+            not_owner_dependent_fields = get_pattern_dependent_croppings(instance_id).filter(
+                ~Q(field__user_id=data['author_id'])
+            )
+            if not_owner_dependent_fields.count() > 0:
                 raise ValidationError({
                     'non_field_errors': (
                         'O padrão não pode ser alterado enquanto está sendo utilizado por outros usuários. '
                         'Tente copiar as mudanças que deseja para um novo padrão.'
+                    )
+                })
+
+        if 'source_pattern_id' in data:
+            source_pattern = get_cropping_pattern(data['source_pattern_id'], data['author_id'])
+            if source_pattern.name == data['name']:
+                raise ValidationError({
+                    'name': (
+                        f'O nome não pode ser igual ao do padrão original: '
+                        f'"{data["name"]}" (source_pattern_id = {source_pattern.pk}).'
+                    )
+                })
+            if source_pattern.description == data['description']:
+                raise ValidationError({
+                    'description': (
+                        f'A descrição não pode ser igual à do padrão original '
+                        f'(source_pattern_id = {source_pattern.pk}).'
                     )
                 })
             

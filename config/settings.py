@@ -35,20 +35,53 @@ SECRET_KEY = env('DJANGO_SECRET_KEY')
 ALLOWED_HOSTS = env.list('DJANGO_ALLOWED_HOSTS', default=["*"])
 
 # Application definition
+DATABASE_ROUTERS = ['config.dbrouters.AppDBRouter']
+
+root_db_config = {
+    'ENGINE': env('DATABASE_ENGINE', default='django.contrib.gis.db.backends.postgis'),
+    'NAME': env('DATABASE_NAME'),
+    'USER': env('DATABASE_USER'),
+    'PASSWORD': env('DATABASE_PASSWORD'),
+    'HOST': env('DATABASE_HOST'),
+    'PORT': env.int('DATABASE_PORT'),
+}
 
 DATABASES = {
     'default': {
-        'ENGINE': env('DATABASE_ENGINE', default='django.contrib.gis.db.backends.postgis'),
-        'NAME': env('DATABASE_NAME'),
-        'USER': env('DATABASE_USER'),
-        'PASSWORD': env('DATABASE_PASSWORD'),
-        'HOST': env('DATABASE_HOST'),
-        'PORT': env.int('DATABASE_PORT'),
+        **root_db_config,
         'OPTIONS': {
             'sslmode': env('DATABASE_SSLMODE', default='require'),
             'options': env('DATABASE_OPTIONS', default='-c search_path=public,core,catalog,geography,agroforestry')
         },
-    }
+    },
+    'core': {
+        **root_db_config,
+        'OPTIONS': {
+            'sslmode': env('DATABASE_SSLMODE', default='require'),
+            'options': env('DATABASE_OPTIONS', default='-c search_path=core')
+        },
+    },
+    'geography': {
+        **root_db_config,
+        'OPTIONS': {
+            'sslmode': env('DATABASE_SSLMODE', default='require'),
+            'options': env('DATABASE_OPTIONS', default='-c search_path=geography')
+        },
+    },
+    'catalog': {
+        **root_db_config,
+        'OPTIONS': {
+            'sslmode': env('DATABASE_SSLMODE', default='require'),
+            'options': env('DATABASE_OPTIONS', default='-c search_path=catalog')
+        },
+    },
+    'agroforestry': {
+        **root_db_config,
+        'OPTIONS': {
+            'sslmode': env('DATABASE_SSLMODE', default='require'),
+            'options': env('DATABASE_OPTIONS', default='-c search_path=agroforestry')
+        },
+    },
 }
 
 INSTALLED_APPS = [
