@@ -10,6 +10,13 @@
 # along with this program. If not, see <https://www.gnu.org/licenses>.
 
 import hashlib
+import io
+import os
+import uuid
+from PIL import Image, ImageOps
+from django.core.files.uploadedfile import InMemoryUploadedFile
+from catalog.models import Image as PlantImage
+
 
 def string_to_md5(string):
     return hashlib.md5(string.encode('utf-8')).hexdigest()
@@ -23,3 +30,28 @@ def none_if_empty(value: str):
         return None
 
     return value
+
+def strip_exif_metadata(image_file):
+    # 1. Abre a imagem usando o Pillow
+    img = Image.open(image_file)
+    img_format = img.format
+
+    # 2. Mantém a orientação correta da imagem antes de limpar os metadados
+    img = ImageOps.exif_transpose(img)
+    
+    output_buffer = io.BytesIO()
+    # 3. Salva a imagem no formato original (JPEG, PNG, etc.) SEM os metadados EXIF
+    img.save(output_buffer, format=img_format if img_format else 'JPEG')
+    output_buffer.seek(0)
+    
+    # 4. Reconstrói o arquivo no formato que o Django espera receber
+    cleaned_file = InMemoryUploadedFile(
+        file=output_buffer,
+        field_name=image_file.field_name,
+        name=image_file.name,
+        content_type=image_file.content_type,
+        size=output_buffer.getbuffer().nbytes,
+        charset=image_file.charset
+    )
+    
+    return cleaned_file

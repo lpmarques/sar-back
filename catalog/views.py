@@ -13,12 +13,13 @@ from abc import ABC
 from django.contrib.postgres.aggregates import ArrayAgg
 from rest_framework import status
 from rest_framework.exceptions import APIException
-from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.views import APIView
 from catalog.services import get_plant
 from core.views import ContentListView, ContentView, ContentView
-from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, TraitValue
+from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Image, Taxon, TraitValue
 from catalog.serializers.models import *
 from catalog.serializers.parameters import *
 
@@ -55,8 +56,8 @@ class PlantView(ContentView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
-        data = request.data
-        data.update({'content_proposer_id': request.user.id})
+        data = dict(request.data.items())
+        data['content_proposer_id'] = request.user.id
 
         serializer = PlantCreationSerializer(data=data)
         try:
@@ -145,9 +146,21 @@ class PopularNameView(ContentView):
 class PopularNameListView(ContentListView):
     model_class = PopularName
     serializer_class = PopularNameSerializer
-    params_serializer_class = PopularNameParamsSerializer    
+    params_serializer_class = PopularNameParamsSerializer
 
 class PlantPopularNameListView(PlantContentListView, PopularNameListView):
+    pass
+
+
+class ImageView(ContentView):
+    model_class = Image
+    serializer_class = ImageSerializer
+    parser_classes = [MultiPartParser, FormParser]
+
+class ImageListView(ContentListView, ImageView):
+    params_serializer_class = ImageParamsSerializer
+
+class PlantImageListView(PlantContentListView, ImageListView):
     pass
 
 

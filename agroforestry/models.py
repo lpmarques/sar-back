@@ -27,7 +27,7 @@ class Cropping(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'croppings'
+        db_table = '"agroforestry"."croppings"'
 
 
 class CroppingPattern(models.Model):
@@ -46,7 +46,7 @@ class CroppingPattern(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'cropping_patterns'
+        db_table = '"agroforestry"."cropping_patterns"'
         unique_together = (('name', 'author', 'deleted_at'),)
 
 
@@ -63,7 +63,7 @@ class CroppingPatternCrop(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'cropping_pattern_crops'
+        db_table = '"agroforestry"."cropping_pattern_crops"'
         ordering = ['position']
 
 
@@ -79,7 +79,7 @@ class CroppingPatternRow(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'cropping_pattern_rows'
+        db_table = '"agroforestry"."cropping_pattern_rows"'
         unique_together = (('pattern', 'position'),)
         ordering = ['position']
 
@@ -93,7 +93,7 @@ class CroppingRowPurpose(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'cropping_row_purposes'
+        db_table = '"agroforestry"."cropping_row_purposes"'
 
 
 class Farm(models.Model):
@@ -105,7 +105,7 @@ class Farm(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'farms'
+        db_table = '"agroforestry"."farms"'
 
 
 class Field(models.Model):
@@ -119,7 +119,7 @@ class Field(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'fields'
+        db_table = '"agroforestry"."fields"'
 
 
 class Function(models.Model):
@@ -133,7 +133,7 @@ class Function(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'functions'
+        db_table = '"agroforestry"."functions"'
 
 
 class PlantSiteFitting(models.Model):
@@ -150,7 +150,7 @@ class PlantSiteFitting(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'plant_site_fitting'
+        db_table = '"agroforestry"."plant_site_fitting"'
 
 
 class RuleSet(models.Model):
@@ -168,7 +168,7 @@ class RuleSet(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'rule_sets'
+        db_table = '"agroforestry"."rule_sets"'
         unique_together = (('name', 'author'),)
 
 
@@ -184,7 +184,7 @@ class Rule(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'rules'
+        db_table = '"agroforestry"."rules"'
 
 
 class Site(models.Model):
@@ -206,7 +206,7 @@ class Site(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'sites'
+        db_table = '"agroforestry"."sites"'
 
 
 class SiteTrait(models.Model):
@@ -228,7 +228,7 @@ class SiteTrait(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'site_traits'
+        db_table = '"agroforestry"."site_traits"'
 
 
 class SiteTraitTextValueOption(models.Model):
@@ -241,7 +241,7 @@ class SiteTraitTextValueOption(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'site_trait_text_value_options'
+        db_table = '"agroforestry"."site_trait_text_value_options"'
 
 
 class SiteTraitValue(models.Model):
@@ -258,7 +258,7 @@ class SiteTraitValue(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'site_trait_values'
+        db_table = '"agroforestry"."site_trait_values"'
         unique_together = (('site', 'trait', 'deleted_at'),)
 
 
@@ -269,5 +269,5 @@ class SiteTraitValueText(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'site_trait_value_texts'
+        db_table = '"agroforestry"."site_trait_value_texts"'
     

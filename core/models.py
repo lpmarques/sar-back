@@ -36,7 +36,7 @@ class Content(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'contents'
+        db_table = '"core"."contents"'
 
 
 class ContentEndorsement(models.Model):
@@ -49,7 +49,7 @@ class ContentEndorsement(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'content_endorsements'
+        db_table = '"core"."content_endorsements"'
         unique_together = (('content', 'endorser', 'deleted_at'),)
 
 
@@ -66,7 +66,7 @@ class Source(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'sources'
+        db_table = '"core"."sources"'
 
 
 class SourceField(models.Model):
@@ -83,7 +83,7 @@ class SourceField(models.Model):
     objects = SourceFieldQuerySet().as_manager()
 
     class Meta:
-        db_table = 'source_fields'
+        db_table = '"core"."source_fields"'
         unique_together = (('source_type', 'name_text'),)
 
 
@@ -98,7 +98,7 @@ class SourceFieldValue(models.Model):
     objects = SourceFieldValueQuerySet.as_manager()
 
     class Meta:
-        db_table = 'source_field_values'
+        db_table = '"core"."source_field_values"'
 
 
 class SourceType(models.Model):
@@ -117,7 +117,7 @@ class SourceType(models.Model):
     objects = SourceTypeQuerySet().as_manager()
 
     class Meta:
-        db_table = 'source_types'
+        db_table = '"core"."source_types"'
 
 
 class Text(models.Model):
@@ -129,7 +129,7 @@ class Text(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'texts'
+        db_table = '"core"."texts"'
 
 
 class User(EmailAbstractUser):
@@ -171,4 +171,4 @@ class User(EmailAbstractUser):
 
     class Meta:
         managed = True
-        db_table = 'users'
+        db_table = '"core"."users"'

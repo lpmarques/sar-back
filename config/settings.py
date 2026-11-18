@@ -35,7 +35,7 @@ SECRET_KEY = env('DJANGO_SECRET_KEY')
 ALLOWED_HOSTS = env.list('DJANGO_ALLOWED_HOSTS', default=["*"])
 
 # Application definition
-DATABASE_ROUTERS = ['config.dbrouters.AppDBRouter']
+# DATABASE_ROUTERS = ['config.dbrouters.AppDBRouter']
 
 root_db_config = {
     'ENGINE': env('DATABASE_ENGINE', default='django.contrib.gis.db.backends.postgis'),
@@ -45,6 +45,21 @@ root_db_config = {
     'HOST': env('DATABASE_HOST'),
     'PORT': env.int('DATABASE_PORT'),
 }
+
+GS_PROJECT_ID = env('GCS_PROJECT_ID')
+GS_BUCKET_NAME = env('GCS_BUCKET_NAME')
+
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+MEDIA_URL = f'https://googleapis.com/{GS_BUCKET_NAME}/'
 
 DATABASES = {
     'default': {
@@ -98,6 +113,7 @@ INSTALLED_APPS = [
 	'authemail',
     'corsheaders',
     'debug_toolbar',
+    'storages',
     'agroforestry',
     'catalog',
     'core',

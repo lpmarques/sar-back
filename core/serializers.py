@@ -296,6 +296,8 @@ class ContentPreviewSerializer(ModelSerializer):
         ]
 
 class ContentParamsSerializer(Serializer):
+    content_id = IntegerField(required=False, allow_null=False)
+    content__status__in = StringListField(required=False, allow_null=False, source='status')
     with_user_endorsement_info = BooleanField(required=False)
 
 class ContentSerializer(ModelSerializer):

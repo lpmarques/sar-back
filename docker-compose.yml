@@ -4,4 +4,4 @@ services:
     container_name: sar-back-django
     network_mode: host
     env_file:
-      - .env.staging.docker
+      - .env.development.docker

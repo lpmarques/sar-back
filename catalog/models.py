@@ -9,9 +9,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses>.
 
+import os
+import uuid
+
 from django.db import models
 from django.db.models.functions import Now
 from catalog.querysets import InvasionRiskRegionQuerySet, NaturalOccurrenceRegionQuerySet, PlantQuerySet, TraitQuerySet, TraitValueQuerySet
+from slugify import slugify
 from core.models import Content, Text
 from core.querysets import ContentQuerySet
 from geography.models import Biome, Country, State, VegetationType
@@ -27,7 +31,25 @@ class Plant(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'plants'
+        db_table = '"catalog"."plants"'
+
+
+def build_image_path(instance, filename):
+    ext = os.path.splitext(filename)[1].lower()
+    unique_filename = f"{uuid.uuid4()}{ext}"
+
+    return os.path.join('plants', slugify(instance.accepted_taxon_name), 'images', unique_filename)
+
+class Image(models.Model):
+    content = models.OneToOneField(Content, models.DO_NOTHING)
+    plant = models.ForeignKey(Plant, models.DO_NOTHING)
+    path = models.ImageField(upload_to=build_image_path)
+
+    objects = ContentQuerySet().as_manager()
+
+    class Meta:
+        managed = True
+        db_table = '"catalog"."images"'
 
 
 class InvasionRiskRegion(models.Model):
@@ -48,7 +70,7 @@ class InvasionRiskRegion(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'invasion_risk_regions'
+        db_table = '"catalog"."invasion_risk_regions"'
 
 
 class NaturalOccurrenceRegion(models.Model):
@@ -63,7 +85,7 @@ class NaturalOccurrenceRegion(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'natural_occurrence_regions'
+        db_table = '"catalog"."natural_occurrence_regions"'
 
 
 class PopularName(models.Model):
@@ -75,7 +97,7 @@ class PopularName(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'popular_names'
+        db_table = '"catalog"."popular_names"'
 
 
 class Taxon(models.Model):
@@ -96,7 +118,7 @@ class Taxon(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'taxa'
+        db_table = '"catalog"."taxa"'
 
 
 class Trait(models.Model):
@@ -121,7 +143,7 @@ class Trait(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'traits'
+        db_table = '"catalog"."traits"'
         unique_together = (('name_text', 'section_text'),)
 
 
@@ -135,7 +157,7 @@ class TraitTextValueOption(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'trait_text_value_options'
+        db_table = '"catalog"."trait_text_value_options"'
 
 
 class TraitValue(models.Model):
@@ -150,7 +172,7 @@ class TraitValue(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'trait_values'
+        db_table = '"catalog"."trait_values"'
 
 
 class TraitValueText(models.Model):
@@ -160,4 +182,4 @@ class TraitValueText(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'trait_values_texts' # TODO: change this table name to trait_value_texts
+        db_table = '"catalog"."trait_values_texts"' # TODO: change this table name to trait_value_texts
