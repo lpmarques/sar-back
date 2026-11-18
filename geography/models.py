@@ -25,7 +25,7 @@ class Biome(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'biomes'
+        db_table = '"geography"."biomes"'
         unique_together = (('name', 'country'),)
 
 
@@ -50,7 +50,7 @@ class ClimateNormal(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'climate_normals'
+        db_table = '"geography"."climate_normals"'
 
 
 class Country(models.Model):
@@ -64,7 +64,7 @@ class Country(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'countries'
+        db_table = '"geography"."countries"'
 
 
 class MonthlyDroughtArea(models.Model):
@@ -88,7 +88,7 @@ class MonthlyDroughtArea(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'monthly_drought_areas'
+        db_table = '"geography"."monthly_drought_areas"'
 
 
 class Municipality(models.Model):
@@ -101,7 +101,7 @@ class Municipality(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'municipalities'
+        db_table = '"geography"."municipalities"'
         unique_together = (('name', 'state'),)
 
 
@@ -116,7 +116,7 @@ class SoilAcidityLevel(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'soil_acidity_levels'
+        db_table = '"geography"."soil_acidity_levels"'
 
 
 class SoilPhMap(models.Model):
@@ -133,7 +133,7 @@ class SoilPhMap(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'soil_ph_maps'
+        db_table = '"geography"."soil_ph_maps"'
 
 
 class SoilTextureArea(models.Model):
@@ -147,7 +147,7 @@ class SoilTextureArea(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'soil_texture_areas'
+        db_table = '"geography"."soil_texture_areas"'
 
 
 class SoilTextureType(models.Model):
@@ -159,7 +159,7 @@ class SoilTextureType(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'soil_texture_types'
+        db_table = '"geography"."soil_texture_types"'
 
 
 class State(models.Model):
@@ -173,7 +173,7 @@ class State(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'states'
+        db_table = '"geography"."states"'
         unique_together = (('name', 'country'),)
 
 
@@ -189,7 +189,7 @@ class VegetationArea(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'vegetation_areas'
+        db_table = '"geography"."vegetation_areas"'
 
 
 class VegetationType(models.Model):
@@ -200,5 +200,5 @@ class VegetationType(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'vegetation_types'
+        db_table = '"geography"."vegetation_types"'
         unique_together = (('name', 'country'),)

@@ -231,8 +231,10 @@ class ContentView(APIView, ABC):
         return Response(serializer.data, status=status.HTTP_200_OK)
         
     def post(self, request):
-        data = request.data
-        data.update({'content_proposer_id': request.user.id})
+        # when Content-Type: multipart/form-data, request.data is a QueryDict (with internal lists):
+        # copying the contents via items() correctly extracts files and scalar values
+        data = dict(request.data.items())
+        data['content_proposer_id'] = request.user.id
         serializer = self.serializer_class(data=data)
 
         try:
@@ -302,10 +304,7 @@ class ContentView(APIView, ABC):
         return Response(content, status=status.HTTP_200_OK)
 
 class ContentListView(ContentView, ABC):
-    @property
-    @abstractmethod
-    def params_serializer_class(self): # sets params_serializer_class as abstract attribute that needs to be declared in child
-        pass
+    params_serializer_class = ContentParamsSerializer
 
     def get_filter_params(self):
         return self.params_serializer_class(self.request.query_params).data
@@ -322,8 +321,8 @@ class ContentEndorsementView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        data = request.data
-        data.update({'endorser_id': request.user.id})
+        data = dict(request.data.items())
+        data['endorser_id'] = request.user.id
         serializer = ContentEndorsementSerializer(data=data)
 
         if not serializer.is_valid():
@@ -407,9 +406,8 @@ class SourceView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
-        data = request.data
-        data.update({'creator_id': request.user.id})
-        # data.update({'creator_id': 4})
+        data = dict(request.data.items())
+        data['creator_id'] = request.user.id
         serializer = SourceSerializer(data=data)
 
         if not serializer.is_valid():

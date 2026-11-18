@@ -12,18 +12,20 @@
 from rest_framework.serializers import Serializer, Field, CharField, BooleanField, IntegerField
 from core.serializers import StringListField
 
-class TaxonParamsSerializer(Serializer):
+class ContentParamsSerializer(Serializer):
     content_id = IntegerField(required=False, allow_null=False)
     content__status__in = StringListField(required=False, allow_null=False, source='status')
+
+class TaxonParamsSerializer(ContentParamsSerializer):
     taxonomic_status = CharField(required=False, allow_blank=False)
 
-class PopularNameParamsSerializer(Serializer):
-    content_id = IntegerField(required=False, allow_null=False)
-    content__status__in = StringListField(required=False, allow_null=False, source='status')
+class PopularNameParamsSerializer(ContentParamsSerializer):
+    pass
 
-class NaturalOccurrenceRegionParamsSerializer(Serializer):
-    content_id = IntegerField(required=False, allow_null=False)
-    content__status__in = StringListField(required=False, allow_null=False, source='status')
+class ImageParamsSerializer(ContentParamsSerializer):
+    pass
+
+class NaturalOccurrenceRegionParamsSerializer(ContentParamsSerializer):
     country__name_text__pt_br = CharField(required=False, allow_blank=False, source='country')
     state__code = CharField(required=False, allow_null=False, source='state')
     biome__name = CharField(required=False, allow_blank=False, source='biome')
@@ -33,9 +35,7 @@ class TraitParamsSerializer(Serializer):
     name__in = StringListField(required=False, allow_null=False, source='trait_slugs')
     section__in = StringListField(required=False, allow_null=False, source='section_slugs')
 
-class TraitValueParamsSerializer(Serializer):
-    content_id = IntegerField(required=False, allow_null=False)
-    content__status__in = StringListField(required=False, allow_null=False, source='status')
+class TraitValueParamsSerializer(ContentParamsSerializer):
     trait__name__in = StringListField(required=False, allow_null=False, source='trait_slugs')
     trait__section__in = StringListField(required=False, allow_null=False, source='section_slugs')
 

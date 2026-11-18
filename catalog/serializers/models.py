@@ -9,13 +9,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses>.
 
+import os
+
+from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.db.models import Q
 from django.db.models.functions import Now
-from rest_framework.serializers import CharField, IntegerField, ModelSerializer, Serializer, SerializerMethodField, SlugRelatedField, ValidationError
+from rest_framework.serializers import CharField, ImageField, IntegerField, ModelSerializer, Serializer, SerializerMethodField, SlugRelatedField, ValidationError
 from unidecode import unidecode
-from catalog.models import Plant, NaturalOccurrenceRegion, PopularName, Taxon, Trait, TraitTextValueOption, TraitValue
-from catalog.utils import md5_to_color, none_if_empty, string_to_md5
+from catalog.models import Image, Plant, NaturalOccurrenceRegion, PopularName, Taxon, Trait, TraitTextValueOption, TraitValue
+from catalog.utils import md5_to_color, none_if_empty, string_to_md5, strip_exif_metadata
 from core.models import Text
 from core.serializers import ContentSerializer
 from geography.models import Country, VegetationArea
@@ -512,7 +515,6 @@ class PopularNameSerializer(ContentSerializer):
         fields = [
             'id',
             'content_id',
-            'content_status',
             'plant_id',
             'name',
         ] + ContentSerializer.Meta.fields
@@ -526,6 +528,77 @@ class PopularNamePreviewSerializer(PopularNameSerializer):
             'content_status',
             'name',
         ]
+
+class ImageSerializer(ContentSerializer):
+    # read
+    id = IntegerField(read_only=True)
+    content_id = IntegerField(read_only=True)
+    url = ImageField(read_only=True, source='path')
+    # write
+    image = ImageField(write_only=True, source='path')
+    # both
+    plant_id = IntegerField()
+
+    max_size_mb = 10
+    valid_extensions = ['.jpg', '.jpeg', '.png', '.webp']
+    valid_mime_types = ['image/jpeg', 'image/png', 'image/webp']
+
+    def __init__(self,  *args, **kwargs):
+        kwargs['content_type'] = "image"
+
+        super().__init__(*args, **kwargs)
+
+    def to_internal_value(self, data):
+        data = super().to_internal_value(data)
+        if self.partial: # skip fields parsing when partial serializer (proposal acceptance only)
+            return data
+        
+        image = data.get('image')
+        if isinstance(image, UploadedFile):
+            data['image'] = strip_exif_metadata(image)
+
+        return data
+
+    def validate(self, data):
+        if self.partial: # skip validation when partial serializer (proposal acceptance only)
+            return data
+
+        image = data['path']
+        
+        # reference: https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html
+        if image.size > self.max_size_mb * 1024 * 1024:
+            raise ValidationError(f"A imagem ultrapassa o tamanho máximo de {self.max_size_mb}MB.")
+
+        ext = os.path.splitext(image.name)[1].lower()
+        if ext not in self.valid_extensions:
+            raise ValidationError("Extensão não suportada.")
+            
+        if image.content_type not in self.valid_mime_types:
+            raise ValidationError("Conteúdo inválido.")
+
+        # TODO: check for NSFW content (OpenAI moderation API?)
+        
+        return super().validate(data)
+
+    def create(self, validated_data):
+        with transaction.atomic():
+            content = super().create(validated_data)
+
+            return Image.objects.create(
+                content_id = content.id,
+                plant_id = validated_data['plant_id'],
+                path = validated_data['path'],
+            )
+
+    class Meta(ContentSerializer.Meta):
+        model = Image
+        fields = [
+            'id',
+            'content_id',
+            'plant_id',
+            'image',
+            'url',
+        ] + ContentSerializer.Meta.fields
 
 class NaturalOccurrenceRegionSerializer(ContentSerializer):
     # read
