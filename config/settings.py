@@ -48,6 +48,7 @@ root_db_config = {
 
 GS_PROJECT_ID = env('GCS_PROJECT_ID')
 GS_BUCKET_NAME = env('GCS_BUCKET_NAME')
+GS_IAM_SIGN_BLOB = env.bool('GCS_IAM_SIGN_BLOB', default=True)
 
 STORAGES = {
     "default": {
@@ -59,7 +60,6 @@ STORAGES = {
 }
 
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
-MEDIA_URL = f'https://googleapis.com/{GS_BUCKET_NAME}/'
 
 DATABASES = {
     'default': {

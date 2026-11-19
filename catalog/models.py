@@ -38,7 +38,7 @@ def build_image_path(instance, filename):
     ext = os.path.splitext(filename)[1].lower()
     unique_filename = f"{uuid.uuid4()}{ext}"
 
-    return os.path.join('plants', slugify(instance.accepted_taxon_name), 'images', unique_filename)
+    return os.path.join('plants', slugify(instance.plant.accepted_taxon_name), 'images', unique_filename)
 
 class Image(models.Model):
     content = models.OneToOneField(Content, models.DO_NOTHING)

@@ -553,7 +553,7 @@ class ImageSerializer(ContentSerializer):
         if self.partial: # skip fields parsing when partial serializer (proposal acceptance only)
             return data
         
-        image = data.get('image')
+        image = data.get('path')
         if isinstance(image, UploadedFile):
             data['image'] = strip_exif_metadata(image)
 
